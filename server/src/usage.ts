@@ -6,6 +6,8 @@
 //     rate_limit_event: status, rateLimitType, utilization 0..1, resetsAt in Unix seconds).
 // Nothing here is estimated: a limit Claude did not report is simply not there.
 // Kept in <state>/usage.json.
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { AppUsage, PlanLimit, TokenUsage, UsageState } from "../../shared/protocol.ts";
 import { isJsonObject } from "./acp/acp-client.ts";
@@ -72,6 +74,23 @@ interface UsageFile {
   apps: Record<string, AppUsage>;
   plan: PlanLimit[];
   month: { key: string; usage: TokenUsage };
+  /** claudeAccountKey() of the account Claude's plan limits were seen on. */
+  claudeAccount?: string;
+}
+
+/**
+ * The Claude account the companion's Claude runs as, as a hash (never the account itself): the
+ * accountUuid and organization in Claude Code's own config (CLAUDE_CONFIG_DIR/.claude.json, or
+ * ~/.claude.json without it), else the config folder. Another sign-in, or another CLAUDE_CONFIG_DIR,
+ * gives another key, so one account's "weekly limit used up" is not shown for the next one.
+ */
+export function claudeAccountKey(env: NodeJS.ProcessEnv = process.env, home = homedir()): string {
+  const dir = env.CLAUDE_CONFIG_DIR?.trim();
+  const file = dir ? join(dir, ".claude.json") : join(home, ".claude.json");
+  const config = readJson<{ oauthAccount?: { accountUuid?: unknown; organizationUuid?: unknown } }>(file, {});
+  const account = config?.oauthAccount;
+  const id = typeof account?.accountUuid === "string" ? `account:${account.accountUuid}:${String(account.organizationUuid ?? "")}` : `dir:${dir || join(home, ".claude")}`;
+  return createHash("sha256").update(id).digest("hex").slice(0, 16);
 }
 
 /** A limit reported this long ago no longer says anything about now. */
@@ -87,15 +106,21 @@ export class UsageMeter {
   engine: "claude" | "codex" = "claude";
   private readonly now: () => Date;
 
-  constructor(stateDir: string, now: () => Date = () => new Date()) {
+  /** `claudeAccount`: claudeAccountKey() of the account Claude runs as now; Claude limits seen on another are dropped. */
+  constructor(stateDir: string, now: () => Date = () => new Date(), claudeAccount?: string) {
     this.path = join(stateDir, "usage.json");
     this.now = now;
     const read = readJson<Partial<UsageFile>>(this.path, {});
+    let plan = Array.isArray(read.plan) ? read.plan : [];
+    const switched = claudeAccount !== undefined && read.claudeAccount !== claudeAccount;
+    if (switched) plan = plan.filter((p) => (p.engine ?? "claude") !== "claude");
     this.data = {
       apps: read.apps ?? {},
-      plan: Array.isArray(read.plan) ? read.plan : [],
+      plan,
       month: read.month ?? { key: monthKey(now()), usage: { ...ZERO_USAGE } },
+      claudeAccount: claudeAccount ?? read.claudeAccount,
     };
+    if (switched) this.save();
   }
 
   /** The app's usage as App.usage shows it (this month rolled over when the month changed). */

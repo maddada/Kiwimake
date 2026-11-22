@@ -35,7 +35,7 @@ import { cleanTodoText, TodoLists } from "./todos.ts";
 import { isJsonObject } from "./acp/acp-client.ts";
 import { appsCliEnv, firstOverview, OVERVIEW_FILE, overviewNeedsAgent } from "./apps-cli.ts";
 import { overviewNudge } from "./playbook.ts";
-import { addUsage, UsageMeter } from "./usage.ts";
+import { addUsage, claudeAccountKey, UsageMeter } from "./usage.ts";
 import { appHealth, HealthReminders, keepHealthyMessage, Templates, updateKey } from "./health.ts";
 import { Backups } from "./backup.ts";
 import { REPO_DIR } from "./config.ts";
@@ -319,7 +319,7 @@ export class AppManager {
       deps.webHost ?? null,
       deps.fetch,
     );
-    this.usage = new UsageMeter(this.store.stateDir);
+    this.usage = new UsageMeter(this.store.stateDir, undefined, claudeAccountKey());
     this.usage.engine = selectedEngine(this.config);
     this.usage.onChange = () => this.careChanged();
     this.templates = new Templates(deps.repoDir ?? REPO_DIR);

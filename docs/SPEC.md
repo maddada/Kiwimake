@@ -397,6 +397,13 @@ show model selector, just the user can pick either in setup."
 - **Claude** is the `claude` CLI installed on the PC, passed to the ACP adapter as
   `CLAUDE_CODE_EXECUTABLE`. The installer no longer carries a Claude binary. On Windows only an
   `.exe` counts (the SDK spawns it directly, which a `.cmd` shim cannot do).
+  Kiwimake runs Claude as the PC's own sign-in, never as whatever account launched it: started from
+  inside a Claude Code session (an agent ran the launcher; `uwsm-app` can run the app in its caller's
+  shell), the desktop drops that session's variables, `CLAUDE_CONFIG_DIR` included, before asking
+  the login shell (`leaveClaudeSession` in `desktop/src/main/shell-env.ts`). `KIWIMAKE_CLAUDE_CONFIG_DIR`
+  picks a Claude profile for Kiwimake alone (for example a claude-swap profile) and always wins. The
+  companion keeps Claude's plan limits with a hash of the account they were seen on and forgets them
+  when Claude runs as another account (`claudeAccountKey` in `server/src/usage.ts`). Added 2026-11-22.
 - **Codex** is the `codex` CLI, run as `codex app-server` over stdio, one private process per app
   session (no shared daemon). It uses model `gpt-6.1-sol` at `high` reasoning effort, with
   the app's MCP tools passed per thread (`server/src/acp/codex-session.ts`). A ChatGPT plan that

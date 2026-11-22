@@ -9,7 +9,7 @@ import type { Builder, KeyEntry } from "../src/builder.ts";
 import { Backups, BACKUP_DIR_NAME, makeRecovery, openBackup, openRecovery, packEntries, RECOVERY_FILE, sealBackup, unpackEntries } from "../src/backup.ts";
 import { behindReasons, HealthReminders, keepHealthyMessage, REMINDER_EVERY_MS, Templates } from "../src/health.ts";
 import type { AppRecord } from "../src/store.ts";
-import { monthKey, planLimitFrom, promptUsage, totalTokens, UsageMeter } from "../src/usage.ts";
+import { claudeAccountKey, monthKey, planLimitFrom, promptUsage, totalTokens, UsageMeter } from "../src/usage.ts";
 
 const dirs: string[] = [];
 function temp(): string {
@@ -64,6 +64,34 @@ describe("usage meter", () => {
     meter.notePlan({ kind: "five_hour", status: "allowed", usedPercent: 40, resetsAt: "2026-11-11T11:00:00Z", seenAt: "2026-11-11T09:00:00Z" });
     meter.notePlan({ kind: "seven_day", status: "allowed", usedPercent: 12, resetsAt: "2026-11-15T00:00:00Z", seenAt: "2026-11-11T09:00:00Z" });
     expect(meter.state().plan.map((p) => p.kind)).toEqual(["seven_day"]);
+  });
+
+  it("forgets Claude's limits when Claude runs as another account, and keeps them for the same one", () => {
+    const state = temp();
+    const now = new Date("2026-11-22T01:00:00Z");
+    const first = new UsageMeter(state, () => now, "account-a");
+    first.notePlan({ kind: "seven_day", status: "rejected", resetsAt: "2026-11-22T10:00:00Z", seenAt: "2026-11-21T22:00:00Z" });
+    first.notePlan({ engine: "codex", kind: "codex_primary", status: "allowed", usedPercent: 10, seenAt: "2026-11-21T22:00:00Z" });
+    first.flush();
+    expect(new UsageMeter(state, () => now, "account-a").state().plan.map((p) => p.kind)).toEqual(["seven_day"]);
+    const other = new UsageMeter(state, () => now, "account-b");
+    expect(other.state().plan).toEqual([]);
+    other.engine = "codex";
+    expect(other.state().plan.map((p) => p.kind)).toEqual(["codex_primary"]);
+    other.flush();
+    expect(new UsageMeter(state, () => now, "account-a").state().plan).toEqual([]);
+  });
+
+  it("keys the Claude account by Claude Code's own config, never by the account's name", () => {
+    const home = temp();
+    const profile = temp();
+    writeFileSync(join(home, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "u1", organizationUuid: "o1", emailAddress: "a@example.com" } }));
+    writeFileSync(join(profile, ".claude.json"), JSON.stringify({ oauthAccount: { accountUuid: "u2", organizationUuid: "o2" } }));
+    const plain = claudeAccountKey({}, home);
+    expect(plain).toMatch(/^[0-9a-f]{16}$/);
+    expect(claudeAccountKey({ CLAUDE_CONFIG_DIR: profile }, home)).not.toBe(plain);
+    expect(claudeAccountKey({}, home)).toBe(plain);
+    expect(claudeAccountKey({ CLAUDE_CONFIG_DIR: temp() }, home)).toMatch(/^[0-9a-f]{16}$/);
   });
 
   it("shows only the selected engine's plan limits and names the engine", () => {

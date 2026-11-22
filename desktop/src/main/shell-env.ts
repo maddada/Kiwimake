@@ -57,6 +57,32 @@ export function parseEnvBlock(output: string): Record<string, string> | undefine
   return result;
 }
 
+/** Set by Claude Code in every command it runs: Kiwimake was started from inside a Claude Code session. */
+const CLAUDE_SESSION_MARKERS = ["CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_ENTRYPOINT"];
+/** That session's own variables: its account (CLAUDE_CONFIG_DIR), process, messaging socket and host. */
+const CLAUDE_SESSION_VARS = /^(CLAUDECODE|CLAUDE_CODE_.*|CLAUDE_PID|CLAUDE_EFFORT|CLAUDE_CONFIG_DIR|CLAUDE_AGENT_SDK_VERSION|GHOSTEX_.*)$/;
+
+/**
+ * Started from inside a Claude Code session (an agent ran the launcher or `npm run dev`), Kiwimake
+ * would inherit that session's variables, and with CLAUDE_CONFIG_DIR its Claude account: every app's
+ * Claude, the sign-in check and the usage limits would follow whichever account the agent happened
+ * to run on, not the PC's own sign-in. So they are removed before anything starts; a CLAUDE_CONFIG_DIR
+ * (or CLAUDE_CODE_* setting) the user's own shell profile sets comes back with adoptShellEnv, since
+ * the shell is asked after this. A launcher that sets CLAUDE_CONFIG_DIR itself, outside any Claude
+ * Code session, keeps it. KIWIMAKE_CLAUDE_CONFIG_DIR picks the Claude profile for Kiwimake alone and
+ * always wins (a launcher may run inside a session: uwsm-app can run the app in its caller's shell).
+ * Updates `env` in place; returns the names removed (never their values).
+ */
+export function leaveClaudeSession(env: Env = process.env): string[] {
+  if (env.ANYAPP_KEEP_PATH) return [];
+  const inSession = CLAUDE_SESSION_MARKERS.some((k) => env[k] !== undefined);
+  const removed = inSession ? Object.keys(env).filter((k) => CLAUDE_SESSION_VARS.test(k)).sort() : [];
+  for (const key of removed) delete env[key];
+  const chosen = env.KIWIMAKE_CLAUDE_CONFIG_DIR?.trim();
+  if (chosen) env.CLAUDE_CONFIG_DIR = chosen;
+  return removed;
+}
+
 /** Folder lists joined with ":", in order, each folder once; relative entries are dropped. */
 export function mergePath(...parts: (string | string[] | undefined)[]): string {
   const out = new Set<string>();

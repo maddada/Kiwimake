@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { adoptShellEnv, loginShells, mergePath, npmrcPrefix, parseEnvBlock, probeArgs, readShellEnv, toolDirs, withoutAppImage } from "../src/main/shell-env.ts";
+import { adoptShellEnv, leaveClaudeSession, loginShells, mergePath, npmrcPrefix, parseEnvBlock, probeArgs, readShellEnv, toolDirs, withoutAppImage } from "../src/main/shell-env.ts";
 
 const unix = process.platform !== "win32";
 const MARK = "__KIWIMAKE_SHELL_ENV__";
@@ -91,6 +91,46 @@ describe("the PATH Kiwimake ends up with", () => {
     const win: Record<string, string | undefined> = { PATH: "C:\\Windows" };
     await adoptShellEnv(win, async () => ({ shell: "/bin/zsh", vars: { PATH: "/x" } }), "win32");
     expect(win.PATH).toBe("C:\\Windows");
+  });
+});
+
+describe("started from inside a Claude Code session", () => {
+  it("leaves out that session's account, markers and host variables, and nothing else", () => {
+    const env: Record<string, string | undefined> = {
+      HOME: "/home/u", PATH: "/usr/bin", JAVA_HOME: "/jdk",
+      CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: "s", CLAUDE_CODE_ENTRYPOINT: "cli", CLAUDE_PID: "42", CLAUDE_EFFORT: "high",
+      CLAUDE_CONFIG_DIR: "/home/u/.local/share/claude-swap/sessions/2-other", CLAUDE_CODE_MESSAGING_SOCKET: "/tmp/sock",
+      GHOSTEX_SESSION_TOKEN: "t", ANYAPP_ADMIN_TOKEN: "a",
+    };
+    expect(leaveClaudeSession(env)).toEqual(["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CONFIG_DIR", "CLAUDE_EFFORT", "CLAUDE_PID", "GHOSTEX_SESSION_TOKEN"]);
+    expect(env).toEqual({ HOME: "/home/u", PATH: "/usr/bin", JAVA_HOME: "/jdk", ANYAPP_ADMIN_TOKEN: "a" });
+  });
+
+  it("keeps a CLAUDE_CONFIG_DIR the launcher set outside any session, and everything with ANYAPP_KEEP_PATH", () => {
+    const launcher: Record<string, string | undefined> = { CLAUDE_CONFIG_DIR: "/home/u/.claude-work", CLAUDE_CODE_USE_BEDROCK: "1" };
+    expect(leaveClaudeSession(launcher)).toEqual([]);
+    expect(launcher).toEqual({ CLAUDE_CONFIG_DIR: "/home/u/.claude-work", CLAUDE_CODE_USE_BEDROCK: "1" });
+    const keep: Record<string, string | undefined> = { CLAUDECODE: "1", CLAUDE_CONFIG_DIR: "/x", ANYAPP_KEEP_PATH: "1" };
+    expect(leaveClaudeSession(keep)).toEqual([]);
+    expect(keep.CLAUDE_CONFIG_DIR).toBe("/x");
+  });
+
+  it("always uses KIWIMAKE_CLAUDE_CONFIG_DIR, the Claude profile picked for Kiwimake alone, even from inside a session", () => {
+    const fromAgent: Record<string, string | undefined> = { CLAUDECODE: "1", CLAUDE_CONFIG_DIR: "/agent/account", KIWIMAKE_CLAUDE_CONFIG_DIR: "/home/u/.claude-kiwi" };
+    expect(leaveClaudeSession(fromAgent)).toEqual(["CLAUDECODE", "CLAUDE_CONFIG_DIR"]);
+    expect(fromAgent.CLAUDE_CONFIG_DIR).toBe("/home/u/.claude-kiwi");
+    const plain: Record<string, string | undefined> = { KIWIMAKE_CLAUDE_CONFIG_DIR: " /home/u/.claude-kiwi " };
+    expect(leaveClaudeSession(plain)).toEqual([]);
+    expect(plain.CLAUDE_CONFIG_DIR).toBe("/home/u/.claude-kiwi");
+  });
+
+  it("gets back a CLAUDE_CONFIG_DIR the user's own shell profile sets", async () => {
+    const env: Record<string, string | undefined> = { HOME: "/nowhere", PATH: "/usr/bin", CLAUDECODE: "1", CLAUDE_CONFIG_DIR: "/agent/account" };
+    leaveClaudeSession(env);
+    let asked: Record<string, string | undefined> = {};
+    await adoptShellEnv(env, async (e) => ((asked = { ...e }), { shell: "/bin/bash", vars: { PATH: "/usr/bin", CLAUDE_CONFIG_DIR: "/home/u/.claude-mine" } }), "linux");
+    expect(asked.CLAUDE_CONFIG_DIR).toBeUndefined();
+    expect(env.CLAUDE_CONFIG_DIR).toBe("/home/u/.claude-mine");
   });
 });
 

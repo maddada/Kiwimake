@@ -29,7 +29,7 @@ import { firstExisting, resolvePaths } from "./paths.ts";
 import { loadSettings, saveSettings } from "./settings.ts";
 import { ClaudeSignIn, GitHubSignIn } from "./signin.ts";
 import { runScreenshots } from "./shots.ts";
-import { adoptShellEnv } from "./shell-env.ts";
+import { adoptShellEnv, leaveClaudeSession } from "./shell-env.ts";
 import { isOpenableUrl } from "../shared/links.ts";
 import { DesktopUpdates, updateKind } from "./updates.ts";
 
@@ -1140,6 +1140,9 @@ if (!app.requestSingleInstanceLock() || process.argv.includes("--quit")) {
     log(`[desktop] start ${app.getVersion()} mode=${mode} port=${port} electron=${process.versions.electron} node=${process.versions.node}`);
     // Started from a desktop launcher, Finder, the Dock or at login, there is no shell PATH: ask the
     // login shell while the window opens (shell-env.ts). Everything that looks for a tool waits for it.
+    // First drop the variables of a Claude Code session that started Kiwimake (its account above all).
+    const leftSession = leaveClaudeSession(env);
+    if (leftSession.length > 0) log(`[desktop] started from a Claude Code session: left out its ${leftSession.length} variables (${leftSession.join(", ")})`);
     const shellEnv = adoptShellEnv(env).then((line) => log(`[desktop] shell environment: ${line}`), (error) => log(`[desktop] shell environment: ${(error as Error).message}`));
     ipc();
     const hidden = startedAtLogin();
