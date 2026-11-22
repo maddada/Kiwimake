@@ -241,7 +241,7 @@ export const ANTIGRAVITY_MODEL_LINE = `Antigravity uses Gemini 4 Neon at ${ANTIG
 export function EngineChoice({ s, inSetup }: { s: Snapshot; inSetup?: boolean }) {
   const busy = s.checks.claude.signingIn || s.checks.claude.state === "working" || s.apps.some((a) => a.status === "working" || a.status === "building");
   const [error, setError] = useState("");
-  return <div className="card" style={{ padding: "var(--aa-space-lg)", marginBottom: "var(--aa-space-xl)" }}>
+  return <div className="card text-card" style={{ marginBottom: "var(--aa-space-xl)" }}>
     <strong>{inSetup ? "Claude, Codex or Antigravity?" : "The AI that makes your apps"}</strong>
     <p className="label secondary">{ENGINE_PLANS} {inSetup ? "You can change this later in Settings, when your apps are idle." : "Change it when your apps are idle."}</p>
     {s.settings.engine === "codex" && s.admin?.codexModel && <p className="label secondary">{codexModelLine(s.admin.codexModel)}</p>}

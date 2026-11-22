@@ -261,6 +261,12 @@ button.lrow:hover { background: var(--aa-selected-bg); }
 .another-code .field { width: 100%; }
 :is(.notice, .health-notice, .heads-up, .check-card, .connect-row, .srow):has(> .notice-actions) { flex-wrap: wrap; }
 .srow:has(> .notice-actions) { padding-bottom: var(--aa-space-md); }
+/* A card of plain lines and buttons (Settings' AI and Claude cards, setup's AI card): the lines stack
+   close, then a clear gap before the buttons. A bare .card with buttons gets the same, so a card
+   written without .text-card can't glue its buttons to its text again. */
+:is(.text-card, [class="card"]:has(> .notice-actions)) { padding: var(--aa-space-lg); display: flex; flex-direction: column; gap: var(--aa-space-xs); }
+:is(.text-card, [class="card"]) > .notice-actions { margin-top: var(--aa-space-md); }
+.lede + .text-card { margin-top: var(--aa-space-3xl); }
 
 /* ---------- 4. dialog */
 .scrim { position: fixed; inset: 0; background: var(--aa-scrim); display: grid; place-items: center; z-index: 10; animation: fade var(--aa-duration-base); }

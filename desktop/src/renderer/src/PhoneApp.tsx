@@ -51,7 +51,7 @@ export function GetPhoneApp({ big }: { big?: boolean }) {
           : "Scan this with your phone's camera, then open the downloaded file and allow installing."}
       </p>
       {!local && <p className="label secondary">Preparing the phone download on this PC…</p>}
-      {local?.error && <div className="card" role="status"><p>{local.error}</p><div className="notice-actions"><button className="btn btn-quiet" onClick={() => { setLocal(null); void api.phoneDownload().then(setLocal); }}>Try download again</button></div></div>}
+      {local?.error && <div className="card text-card" role="status"><p>{local.error}</p><div className="notice-actions"><button className="btn btn-quiet" onClick={() => { setLocal(null); void api.phoneDownload().then(setLocal); }}>Try download again</button></div></div>}
       {release?.universalUrl && <button className="btn btn-text btn-sm" onClick={() => api.openExternal(release.universalUrl!)}>Download for an x86 device</button>}
       {localReady && (
         <button className="btn btn-text btn-sm" onClick={() => setUseLocal(!useLocal)}>

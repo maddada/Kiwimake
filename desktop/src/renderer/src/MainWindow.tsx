@@ -1055,7 +1055,7 @@ function SettingsPage({ s, openSetup }: { s: Snapshot; openSetup: (step: StepId)
         <h1 className="title">Settings</h1>
       </header>
       <EngineChoice s={s} />
-      <div className="card" style={{ padding: "var(--aa-space-lg)", marginBottom: s.checks.claude.another ? "var(--aa-space-md)" : "var(--aa-space-xl)" }}>
+      <div className="card text-card" style={{ marginBottom: s.checks.claude.another ? "var(--aa-space-md)" : "var(--aa-space-xl)" }}>
         <p>{s.checks.claude.summary}</p>
         {s.checks.claude.maintenance && <p className="label secondary">{s.checks.claude.maintenance}</p>}
         <div className="notice-actions">
