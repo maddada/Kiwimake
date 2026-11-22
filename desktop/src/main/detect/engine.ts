@@ -10,7 +10,8 @@ export async function detectEngine(engine: Engine, cli: string | undefined, run:
   if (engine === "claude") return { ...await detectClaude(cli, run, env), installed: true };
   if (engine === "antigravity") {
     const auth = await probe(cli, env);
-    if (auth.kind === "signed-in") return { state: "done", installed: true, summary: "Signed in to Antigravity", ...(auth.plan ? { plan: auth.plan } : {}) };
+    // Google names its plans in full ("Google AI Ultra"), so the plan goes in the sentence, not after the engine's name.
+    if (auth.kind === "signed-in") return { state: "done", installed: true, summary: `Signed in to Antigravity${auth.plan ? ` (${auth.plan})` : ""}` };
     if (auth.kind === "signed-out") return { state: "needed", installed: true, summary: "Sign in to Antigravity with your Google account." };
     return { state: "problem", installed: true, summary: "Could not check Antigravity sign-in. Try again." };
   }

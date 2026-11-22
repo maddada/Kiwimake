@@ -405,13 +405,13 @@ show model selector, just the user can pick either in setup."
   companion keeps Claude's plan limits with a hash of the account they were seen on and forgets them
   when Claude runs as another account (`claudeAccountKey` in `server/src/usage.ts`). Added 2026-11-22.
 - **Codex** is the `codex` CLI, run as `codex app-server` over stdio, one private process per app
-  session (no shared daemon). It uses model `gpt-6.1-sol` at `high` reasoning effort, with
+  session (no shared daemon). It uses model `gpt-6.2-sol` at `high` reasoning effort, with
   the app's MCP tools passed per thread (`server/src/acp/codex-session.ts`). A ChatGPT plan that
-  does not include `gpt-6.1-sol` (a free plan) refuses every turn ("The 'gpt-6.1-sol' model is not
+  does not include `gpt-6.2-sol` (a free plan) refuses every turn ("The 'gpt-6.2-sol' model is not
   supported when using Codex with a ChatGPT account."). Then the companion drops the refused turn
   from the thread, runs it again once on `gpt-6-luna` and remembers that in its state
   (`codex-model.json`, with a hash of the signed-in account and plan, never the account itself),
-  so later chats start on `gpt-6-luna`. It tries `gpt-6.1-sol` again after a sign-in change or a
+  so later chats start on `gpt-6-luna`. It tries `gpt-6.2-sol` again after a sign-in change or a
   day later, so a paid plan gets it back by itself (`server/src/acp/codex-model.ts`, added
   2026-11-20). The person sees nothing of this, only one quiet line under "The AI that makes your
   apps" in Settings naming the model in use (`AdminState.codexModel`, additive).
@@ -602,3 +602,36 @@ mom enjoy most?" with three answers to tap, and "A page she opens from a link" m
 A manual Kotlin pick was kept with no question. No plan page asked the kind. Fixed from the run:
 the kind sentence now comes before anything else, and the question is held to the end of the turn
 (the agent had greeted before and after it). Codex was not tried live (not signed in on this PC).
+
+## Antigravity, a third engine (added 2026-11-22)
+
+The user: "also we need to support anti gravity acp, take this from t3code ... and make claude code
+and codex also use acp ... for gemini we use neon high and for codex we use sol 6.2 high for now"
+
+- **Antigravity** is Google's `agy` CLI, run as `agy acp` (ACP over stdio) through the same ACP
+  session as Claude (`server/src/acp/claude-session.ts` with the profile in
+  `server/src/acp/antigravity.ts`), the way t3code runs it (https://github.com/pingdotgg/t3code,
+  MIT, notice in `server/THIRD_PARTY_NOTICES.md`): the `oauth-personal` sign-in after initialize,
+  the playbook in session/new's `_meta.antigravity.systemPrompt.append`, model `gemini-4-neon` at
+  `thought_level` `high` (what `agy models` lists as `gemini-4-neon-high`), no client file access,
+  `--dangerously-skip-permissions` for full access, its own questions (`interaction_` ids) left for
+  the person, and a `refusal` stop shown as a used-up quota ("Your Antigravity plan needs a rest").
+  Its MCP tools are named `mcp_<server>_<tool>`; the session rewrites them to `mcp__<server>__<tool>`
+  so the chat hides its own tools as it does for Claude. It uses the PC's own `agy` and sign-in.
+  Found in `~/.local/bin` (or `%LOCALAPPDATA%\agy\bin`), installed with
+  `antigravity.google/cli/install.sh` or `.ps1`, updated with `agy update`, signed in with
+  `agy acp --login`; Setup checks the sign-in with ACP's initialize and authenticate and never
+  opens a browser for that. Plan percentages are not available over ACP (t3code reads them from
+  Google's private API with the stored token, which Kiwimake does not do).
+- **Claude stays on ACP** as before (t3code itself runs Claude through the Agent SDK, not ACP).
+- **Codex stays on `codex app-server`**, as in t3code. The ACP adapter (`@agentclientprotocol/codex-acp`)
+  keeps Codex's rate limits to itself (only its `/status` text shows them), so the Codex plan
+  limits and "Your Codex plan needs a rest" would be lost, and it has no thread revert for the free
+  plan fallback. Its model is now `gpt-6.2-sol` at `high`.
+
+Proof (2026-11-22): a private companion per engine (ports 8871 to 8873, own state and apps
+folders, GitHub off, fake builder), "A water reminder ..." as a new app. Antigravity: "Since this
+needs to send you reminder notifications even when the app is closed, I'll make it an Android app
+for your phone", set_app_kind (hidden), the plan page and the reply; Claude unchanged; Codex (a
+free plan here) was refused `gpt-6.2-sol`, fell back to `gpt-6-luna` by itself and did the same.
+

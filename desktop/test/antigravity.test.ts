@@ -31,7 +31,7 @@ describe("Antigravity in the desktop", () => {
   });
 
   it("turns that into the setup card's state, with the plan", async () => {
-    expect(await detectEngine("antigravity", "/bin/agy", neverRun, {}, async () => ({ kind: "signed-in", plan: "Google AI Pro" }))).toEqual({ state: "done", installed: true, summary: "Signed in to Antigravity", plan: "Google AI Pro" });
+    expect(await detectEngine("antigravity", "/bin/agy", neverRun, {}, async () => ({ kind: "signed-in", plan: "Google AI Pro" }))).toEqual({ state: "done", installed: true, summary: "Signed in to Antigravity (Google AI Pro)" });
     expect((await detectEngine("antigravity", "/bin/agy", neverRun, {}, async () => ({ kind: "signed-out" }))).state).toBe("needed");
     expect((await detectEngine("antigravity", "/bin/agy", neverRun, {}, async () => ({ kind: "problem" }))).state).toBe("problem");
     expect(await detectEngine("antigravity", undefined, neverRun)).toMatchObject({ installed: false, summary: "Install Antigravity to start making apps." });
