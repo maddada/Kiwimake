@@ -1,6 +1,7 @@
 // Types shared by the Electron main process, the preload bridge and the renderer.
 // The companion's own wire types come from ../../../shared/protocol.ts (types only).
 import type { AdminState, App, GalleryList, AppPreset, AppVersion, BackupRestoreResult, BackupState, CareState, ChatImage, ChatItem, ImageUpload, KeysRestoreResult, PageInfo, ReleaseStats, Suggestion, TodoItem, WorkerInfo } from "../../../shared/protocol.ts";
+import type { Engine } from "../../../shared/engines.mts";
 
 export type { AdminState, App, AppPreset, AppVersion, ChatImage, ChatItem, ImageUpload, PageInfo, TodoItem, WorkerInfo };
 
@@ -126,7 +127,7 @@ export interface CompanionStatus {
 }
 
 export interface Settings {
-  engine: "claude" | "codex";
+  engine: Engine;
   onboardingDone: boolean;
   githubSkipped: boolean;
   startWithWindows: boolean;

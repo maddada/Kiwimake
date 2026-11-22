@@ -16,6 +16,7 @@ import { ChatView } from "./Chat.tsx";
 import { HexCard } from "./Hex.tsx";
 import { PageVoice, useVoiceSetupFrom, VoiceTextarea } from "./Voice.tsx";
 import { EngineChoice, type StepId } from "./Onboarding.tsx";
+import { engineName } from "../../../../shared/engine-names.mts";
 import { PairingDialog } from "./Pairing.tsx";
 import { ShareButton, ShareDialog } from "./Share.tsx";
 import { FromOthersButton, FromOthersDialog } from "./FromOthers.tsx";
@@ -736,12 +737,12 @@ function setupRows(s: Snapshot): SetupRow[] {
     {
       key: "claude",
       icon: KeyRound,
-      title: s.settings.engine === "codex" ? "Codex, the AI" : "Claude, the AI",
+      title: `${engineName(s.settings.engine)}, the AI`,
       state: lineFor(c.claude.state),
-      sub: c.claude.state === "done" ? `Signed in${c.claude.plan ? `, ${s.settings.engine === "codex" ? "Codex" : "Claude"} ${c.claude.plan}` : ""}` : c.claude.state === "checking" ? "Checking" : "Not signed in",
+      sub: c.claude.state === "done" ? `Signed in${c.claude.plan ? `, ${engineName(s.settings.engine)} ${c.claude.plan}` : ""}` : c.claude.state === "checking" ? "Checking" : "Not signed in",
       needsYou: c.claude.state === "needed" || c.claude.state === "problem",
       blocks: true,
-      problemText: `${s.settings.engine === "codex" ? "Codex" : "Claude"} is not signed in, so no app can be made right now.`,
+      problemText: `${engineName(s.settings.engine)} is not signed in, so no app can be made right now.`,
       step: "claude",
       button: "Sign in",
     },
@@ -956,7 +957,7 @@ function SettingsPage({ s, openSetup }: { s: Snapshot; openSetup: (step: StepId)
         <p>{s.checks.claude.summary}</p>
         {s.checks.claude.maintenance && <p className="label secondary">{s.checks.claude.maintenance}</p>}
         <div className="notice-actions">
-          <button className="btn btn-quiet" onClick={() => openSetup("claude")}>Set up {s.settings.engine === "codex" ? "Codex" : "Claude"}</button>
+          <button className="btn btn-quiet" onClick={() => openSetup("claude")}>Set up {engineName(s.settings.engine)}</button>
           <button className="btn btn-quiet" disabled={s.checks.claude.state === "working" || s.apps.some((a) => a.status === "working" || a.status === "building")} onClick={() => api.engineUpdate()}>Check for updates</button>
         </div>
       </div>

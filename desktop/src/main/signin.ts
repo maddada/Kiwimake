@@ -6,6 +6,10 @@
 // localhost callback, so finishing in the browser completes it) and prints a fallback link that
 // shows a code to paste; the app shows "Open the page again" and a box for that code.
 //
+// Antigravity: `agy acp --login` is its ACP terminal sign-in: it opens the Google sign-in page,
+// prints the link (kept for "Open the page again"), and takes a pasted code on stdin when the page
+// shows one. Codex: `codex login`.
+//
 // GitHub: `gh auth login --web` without a terminal prints the one-time code and the device URL and
 // polls on its own (it does not wait for Enter or open a browser). The app shows the code large,
 // opens https://github.com/login/device, and waits for gh to exit. After a sign-in made here, it
@@ -19,6 +23,19 @@ import { killTree, run, spawnHidden } from "./exec.ts";
 import { extractLoginUrl } from "./detect/claude.ts";
 import { ghAssetName, parseDeviceFlow } from "./detect/github.ts";
 import { download, extractZip, fetchJson } from "./install/download.ts";
+import type { Engine } from "../../../shared/engines.mts";
+
+/** The sign-in command: Claude's and Codex's own; Antigravity's is its ACP terminal sign-in (`agy acp --login`). */
+export function signInArgs(engine: Engine): string[] {
+  return engine === "codex" ? ["login"] : engine === "antigravity" ? ["acp", "--login"] : ["auth", "login", "--claudeai"];
+}
+
+/** The sign-in page the command printed, for "Open the sign-in page again". */
+export function signInUrl(engine: Engine, output: string): string | undefined {
+  if (engine === "codex") return output.match(/https:\/\/(?:auth\.openai\.com|chatgpt\.com)\/[^\s\u0007\u001b]+/)?.[0];
+  if (engine === "antigravity") return output.match(/https:\/\/accounts\.google\.com\/o\/oauth2\/[^\s\u0007\u001b"]+/)?.[0];
+  return extractLoginUrl(output);
+}
 
 export class ClaudeSignIn extends EventEmitter {
   private child: ChildProcess | undefined;
@@ -26,18 +43,18 @@ export class ClaudeSignIn extends EventEmitter {
   running = false;
   error: string | undefined;
 
-  start(cli: string, engine: "claude" | "codex" = "claude", env: NodeJS.ProcessEnv = process.env): void {
+  start(cli: string, engine: Engine = "claude", env: NodeJS.ProcessEnv = process.env): void {
     if (this.child) return;
     this.error = undefined;
     this.url = undefined;
     this.running = true;
     let output = "";
-    const child = spawnHidden(cli, engine === "codex" ? ["login"] : ["auth", "login", "--claudeai"], { stdio: ["pipe", "pipe", "pipe"], env });
+    const child = spawnHidden(cli, signInArgs(engine), { stdio: ["pipe", "pipe", "pipe"], env });
     this.child = child;
     child.stdin?.on("error", () => {});
     const onData = (chunk: Buffer) => {
       output = (output + chunk.toString()).slice(-8000);
-      const url = engine === "codex" ? output.match(/https:\/\/(?:auth\.openai\.com|chatgpt\.com)\/[^\s\u0007\u001b]+/)?.[0] : extractLoginUrl(output);
+      const url = signInUrl(engine, output);
       if (url && url !== this.url) {
         this.url = url;
         this.emit("change");

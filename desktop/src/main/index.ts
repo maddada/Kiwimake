@@ -95,7 +95,7 @@ function phoneApkOverrides(): (string | undefined)[] {
 }
 let easyConnectAutoTried = false;
 
-/** The selected engine's CLI on this PC (Claude or Codex), found the way Ghostex finds it (shared/engines.mts). */
+/** The selected engine's CLI on this PC (Claude, Codex or Antigravity), found the way Ghostex finds it (shared/engines.mts). */
 const claudeCli = () => findEngine(settings.engine, env);
 let engineBusy = false;
 /** Engines checked for an update since the last daily reset, whether the update worked or not. */
@@ -147,6 +147,7 @@ const companion = new Companion({
       ANYAPP_ENGINE: settings.engine,
       CLAUDE_CODE_EXECUTABLE: findEngine("claude", env),
       CODEX_EXECUTABLE: findEngine("codex", env),
+      ANTIGRAVITY_EXECUTABLE: findEngine("antigravity", env),
       ...(t?.JAVA_HOME ? { JAVA_HOME: t.JAVA_HOME } : {}),
       ...(t?.ANDROID_HOME ? { ANDROID_HOME: t.ANDROID_HOME, ANDROID_SDK_ROOT: t.ANDROID_HOME } : {}),
       ...(t?.gitBash ? { CLAUDE_CODE_GIT_BASH_PATH: t.gitBash } : {}),

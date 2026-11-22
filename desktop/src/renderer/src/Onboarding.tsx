@@ -4,6 +4,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { ArrowRight, Check, ChevronLeft, Cloud, Copy, Download, ExternalLink, KeyRound, Monitor, QrCode, Smartphone, Wrench, X } from "lucide-react";
 import type { Snapshot } from "../../shared/types.ts";
+import { ANTIGRAVITY_EFFORT, ENGINES, engineName } from "../../../../shared/engine-names.mts";
 import { PairingDialog } from "./Pairing.tsx";
 import { Icon, Spinner, Wordmark } from "./ui.tsx";
 import { GetPhoneAppDialog } from "./PhoneApp.tsx";
@@ -193,7 +194,7 @@ const stepOf = (id: StepId) => `Step ${ORDER.indexOf(id) + 1} of ${RAIL.length}`
 function Welcome() {
   const loop: [LucideIcon, string, string][] = [
     [Smartphone, "You describe it", "On your phone or on this PC, in your own words."],
-    [Monitor, "This PC makes it", "Claude or Codex writes the app and this PC builds it."],
+    [Monitor, "This PC makes it", "Claude, Codex or Antigravity writes the app and this PC builds it."],
     [Download, "It appears on your phone", "Ready to open. Ask for changes any time."],
   ];
   return (
@@ -226,29 +227,36 @@ function Welcome() {
   );
 }
 
-/** Claude or Codex: no model choice (Codex always runs gpt-6.1-sol at high effort). In setup and in Settings. */
 /** The one quiet line about Codex's model: the usual one, or the one a ChatGPT plan allows. */
 export function codexModelLine(m: { model: string; fallback?: true }): string {
   return m.fallback ? `Codex uses ${m.model}, the model your ChatGPT plan includes.` : `Codex uses ${m.model}.`;
 }
 
+/** The plan each engine uses, in the engine choice. */
+const ENGINE_PLANS = "Claude uses a paid Claude plan. Codex uses your ChatGPT plan. Antigravity uses your Google account.";
+/** Antigravity's one quiet line: the model it always runs (shared/engines.mts). */
+export const ANTIGRAVITY_MODEL_LINE = `Antigravity uses Gemini 4 Neon at ${ANTIGRAVITY_EFFORT} thinking.`;
+
+/** Claude, Codex or Antigravity: no model choice (each runs one model, shared/engines.mts). In setup and in Settings. */
 export function EngineChoice({ s, inSetup }: { s: Snapshot; inSetup?: boolean }) {
   const busy = s.checks.claude.signingIn || s.checks.claude.state === "working" || s.apps.some((a) => a.status === "working" || a.status === "building");
   const [error, setError] = useState("");
   return <div className="card" style={{ padding: "var(--aa-space-lg)", marginBottom: "var(--aa-space-xl)" }}>
-    <strong>{inSetup ? "Claude or Codex?" : "The AI that makes your apps"}</strong>
-    <p className="label secondary">Claude uses a paid Claude plan. Codex uses your ChatGPT plan. {inSetup ? "You can change this later in Settings, when your apps are idle." : "Change it when your apps are idle."}</p>
+    <strong>{inSetup ? "Claude, Codex or Antigravity?" : "The AI that makes your apps"}</strong>
+    <p className="label secondary">{ENGINE_PLANS} {inSetup ? "You can change this later in Settings, when your apps are idle." : "Change it when your apps are idle."}</p>
     {s.settings.engine === "codex" && s.admin?.codexModel && <p className="label secondary">{codexModelLine(s.admin.codexModel)}</p>}
+    {s.settings.engine === "antigravity" && <p className="label secondary">{ANTIGRAVITY_MODEL_LINE}</p>}
     {error && <p className="problem-text">{error}</p>}
     <div className="notice-actions" role="group" aria-label="AI engine">
-      {(["claude", "codex"] as const).map((engine) => <button key={engine} className={`btn ${s.settings.engine === engine ? "btn-primary" : "btn-quiet"}`} aria-pressed={s.settings.engine === engine} disabled={busy} onClick={() => { setError(""); void api.setSetting("engine", engine).catch(() => setError("Could not change the engine. Wait for your app to finish and try again.")); }}>{engine === "claude" ? "Claude" : "Codex"}</button>)}
+      {ENGINES.map((engine) => <button key={engine} className={`btn ${s.settings.engine === engine ? "btn-primary" : "btn-quiet"}`} aria-pressed={s.settings.engine === engine} disabled={busy} onClick={() => { setError(""); void api.setSetting("engine", engine).catch(() => setError("Could not change the engine. Wait for your app to finish and try again.")); }}>{engineName(engine)}</button>)}
     </div>
   </div>;
 }
 
 function ClaudeStep({ s }: { s: Snapshot }) {
-  const name = s.settings.engine === "codex" ? "Codex" : "Claude";
+  const name = engineName(s.settings.engine);
   const codex = s.settings.engine === "codex";
+  const google = s.settings.engine === "antigravity";
   const c = s.checks.claude;
   const [code, setCode] = useState("");
   const [showCode, setShowCode] = useState(false);
@@ -266,7 +274,7 @@ function ClaudeStep({ s }: { s: Snapshot }) {
       <Head eyebrow={stepOf("claude")} title="Choose the AI that writes your apps" lede="Kiwimake uses the AI installed on this PC. If it is missing, setup installs the official app for you." />
       <EngineChoice s={s} inSetup />
       <How items={[
-        [`Sign in to ${name}`, codex ? "Use your ChatGPT account in the browser." : "Use a paid Claude plan, such as Pro or Max."],
+        [`Sign in to ${name}`, codex ? "Use your ChatGPT account in the browser." : google ? "Use your Google account in the browser." : "Use a paid Claude plan, such as Pro or Max."],
         ["Already installed?", "Kiwimake uses your existing sign-in and keeps the tool updated."],
         ["Your apps stay here", "Changing the AI keeps your apps, files and chat history."],
       ]} />
@@ -313,7 +321,7 @@ function ClaudeStep({ s }: { s: Snapshot }) {
             </button>
           </form>
         )}
-        {!codex && c.state !== "done" && !c.signingIn && (
+        {!codex && !google && c.state !== "done" && !c.signingIn && (
           <button className="btn btn-text label" onClick={() => api.openExternal("https://claude.com/pricing")}>
             No Claude plan yet? See the plans
           </button>
