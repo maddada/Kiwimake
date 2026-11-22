@@ -28,6 +28,7 @@ import { SuperwhisperFailure, superwhisperBinary, superwhisperTranscribe } from 
 import { firstExisting, resolvePaths } from "./paths.ts";
 import { loadSettings, saveSettings } from "./settings.ts";
 import { ClaudeSignIn, GitHubSignIn } from "./signin.ts";
+import { AccountSwitch, accountsRoot, claudeConfigDir, isInside, otherProfiles, profileEnv, removeProfile, saveProfile, unlinkShared, useSavedProfile } from "./claude-account.ts";
 import { runScreenshots } from "./shots.ts";
 import { adoptShellEnv, leaveClaudeSession } from "./shell-env.ts";
 import { isOpenableUrl } from "../shared/links.ts";
@@ -64,7 +65,10 @@ function log(line: string): void {
   }
 }
 
-/** Dev only: ANYAPP_DESKTOP_SIMULATE="claude=needed,github=needed,tools=needed,phone=none" forces states for screenshots. */
+/**
+ * Dev only: ANYAPP_DESKTOP_SIMULATE="claude=needed,github=needed,tools=needed,phone=none" forces states for screenshots.
+ * claude=signed-in shows a made-up paid sign-in; another=waiting|done|failed the end of "Use another account".
+ */
 const simulate = new Map((env.ANYAPP_DESKTOP_SIMULATE ?? "").split(",").filter(Boolean).map((kv) => kv.split("=") as [string, string]));
 
 let win: BrowserWindow | undefined;
@@ -82,6 +86,11 @@ const checks: Checks = {
 let ghLocation: GhLocation | undefined;
 const claudeSignIn = new ClaudeSignIn();
 const githubSignIn = new GitHubSignIn(paths.toolsDir);
+/** "Use another account" (claude-account.ts): its own sign-in, into a profile folder of Kiwimake's own. */
+const claudeAccounts = accountsRoot(paths.stateDir);
+const accountSignIn = new ClaudeSignIn();
+/** Set once another account signed in, until the companion runs on it: the profile Kiwimake used before. */
+let accountRestart: { previous: string } | undefined;
 let installer: ToolsInstaller | undefined;
 const icons: Record<string, string> = {};
 const iconVersions: Record<string, number> = {};
@@ -253,8 +262,15 @@ async function checkClaude(): Promise<void> {
       ? { state: "needed", summary: "Claude is not signed in on this PC yet." }
       : forced === "signing-in"
         ? { state: "working", summary: "Signing in…", signingIn: true, loginUrl: "https://claude.com/cai/oauth/authorize" }
-        : result;
+        : forced === "signed-in"
+          ? { state: "done", installed: true, summary: "Signed in as kiwi.tester@example.com", email: "kiwi.tester@example.com", plan: "Max" }
+          : result;
   if (claudeSignIn.error && checks.claude.state !== "done") checks.claude.error = claudeSignIn.error;
+  if (accountSwitch.state) checks.claude.another = accountSwitch.state;
+  const another = simulate.get("another");
+  if (!accountSwitch.state && (another === "waiting" || another === "done" || another === "failed")) {
+    checks.claude.another = another === "failed" ? { phase: "failed", error: "This Claude account has no paid plan. Claude Pro or Max is needed, so Kiwimake stays on its account." } : { phase: another, email: "other.account@example.com" };
+  }
   broadcast();
 }
 
@@ -407,6 +423,65 @@ githubSignIn.on("done", async () => {
   // A gh we downloaded must be on the companion's PATH: restart it once GitHub is connected.
   if (checks.github.state === "done" && ghLocation?.source === "tools") await companion.restart();
 });
+
+// ---------------------------------------------------------------- another Claude account
+
+const accountSwitch = new AccountSwitch({
+  root: claudeAccounts,
+  current: () => claudeConfigDir(env),
+  env: () => env,
+  signIn: accountSignIn,
+  status: (e) => detectEngine("claude", findEngine("claude", env), run, e as NodeJS.ProcessEnv),
+  adopt: (dir) => {
+    const previous = claudeConfigDir(env);
+    saveProfile(claudeAccounts, dir);
+    env.CLAUDE_CONFIG_DIR = dir;
+    log(`[claude] another account signed in: Kiwimake's Claude uses ${dir} from now on`);
+    accountRestart = { previous };
+    void checkClaude();
+    void restartForAccount();
+  },
+  log,
+});
+accountSwitch.on("change", () => {
+  checks.claude = { ...checks.claude, another: accountSwitch.state };
+  broadcast();
+});
+
+const appsBusy = () => !!admin?.apps.some((a) => a.status === "working" || a.status === "building");
+
+/**
+ * Another account signed in: the companion starts again on it once no app is working (or at once
+ * when the user asks), so running chats finish first and new chats use the new account; it also
+ * forgets the old account's plan limits then (server/src/usage.ts). A profile of Kiwimake's own that
+ * it used before is signed out and removed; any other profile is left exactly as it is.
+ */
+async function restartForAccount(now = false): Promise<void> {
+  const pending = accountRestart;
+  if (!pending) return;
+  if (!now && appsBusy()) {
+    accountSwitch.settle("waiting");
+    return;
+  }
+  accountRestart = undefined;
+  log(`[claude] starting the companion again on the new account${now ? " (asked to switch now)" : ""}`);
+  await companion.restart();
+  accountSwitch.settle("done");
+  if (isInside(claudeAccounts, pending.previous) && pending.previous !== claudeConfigDir(env)) await retireProfile(pending.previous);
+}
+
+/** Signs out and removes a profile folder of Kiwimake's own; its links go first, so shared files are never touched. */
+async function retireProfile(dir: string): Promise<void> {
+  if (!unlinkShared(claudeAccounts, dir)) return;
+  const cli = findEngine("claude", env);
+  if (cli) await run(cli, ["auth", "logout"], { env: profileEnv(env, dir) as NodeJS.ProcessEnv, timeoutMs: 20_000 });
+  removeProfile(claudeAccounts, dir);
+  log(`[claude] signed out and removed the profile Kiwimake used before (${dir})`);
+}
+
+setInterval(() => {
+  if (accountRestart) void restartForAccount();
+}, 5_000);
 
 async function installTools(): Promise<void> {
   if (installer) return;
@@ -686,6 +761,14 @@ function ipc(): void {
     if (cli) claudeSignIn.start(cli, settings.engine, env);
   });
   ipcMain.handle("claude:cancel", () => claudeSignIn.cancel());
+  ipcMain.handle("claude:another-start", () => {
+    const cli = findEngine("claude", env);
+    if (!cli || settings.engine !== "claude" || claudeSignIn.running || engineBusy || accountRestart) return;
+    accountSwitch.start(cli);
+  });
+  ipcMain.handle("claude:another-code", (_e, code: string) => accountSwitch.submitCode(String(code)));
+  ipcMain.handle("claude:another-cancel", () => accountSwitch.cancel());
+  ipcMain.handle("claude:another-now", () => restartForAccount(true));
   ipcMain.handle("claude:code", (_e, code: string) => claudeSignIn.submitCode(String(code)));
   ipcMain.handle("github:start", () => void githubSignIn.start(ghLocation?.path));
   ipcMain.handle("github:open", async () => {
@@ -1111,6 +1194,7 @@ const updates = (() => {
       quitting = true;
       log("[desktop] restarting to update: stopping the companion");
       claudeSignIn.cancel();
+      accountSwitch.cancel();
       githubSignIn.cancel();
       admin?.close();
       await companion.stop();
@@ -1144,6 +1228,12 @@ if (!app.requestSingleInstanceLock() || process.argv.includes("--quit")) {
     // First drop the variables of a Claude Code session that started Kiwimake (its account above all).
     const leftSession = leaveClaudeSession(env);
     if (leftSession.length > 0) log(`[desktop] started from a Claude Code session: left out its ${leftSession.length} variables (${leftSession.join(", ")})`);
+    // The account signed in with "Use another account" wins over KIWIMAKE_CLAUDE_CONFIG_DIR and the shell.
+    const ownProfile = useSavedProfile(env, claudeAccounts);
+    if (ownProfile) log(`[desktop] Claude runs on the account signed in with "Use another account" (${ownProfile})`);
+    for (const left of otherProfiles(claudeAccounts, ownProfile)) {
+      if (removeProfile(claudeAccounts, left)) log(`[desktop] removed an unused Claude profile of Kiwimake's own (${left})`);
+    }
     const shellEnv = adoptShellEnv(env).then((line) => log(`[desktop] shell environment: ${line}`), (error) => log(`[desktop] shell environment: ${(error as Error).message}`));
     ipc();
     const hidden = startedAtLogin();
@@ -1191,6 +1281,7 @@ if (!app.requestSingleInstanceLock() || process.argv.includes("--quit")) {
     log("[desktop] quitting: stopping the companion");
     win?.hide();
     claudeSignIn.cancel();
+    accountSwitch.cancel();
     githubSignIn.cancel();
     installer?.cancel();
     admin?.close();

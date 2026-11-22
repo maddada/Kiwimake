@@ -19,6 +19,18 @@ export interface ClaudeCheck {
   signingIn?: boolean;
   loginUrl?: string; // the page the sign-in opened, for "Open the page again"
   error?: string;
+  /** "Use another account" in Settings, while it runs and until its notice is closed (main/claude-account.ts). */
+  another?: AccountSwitchState;
+}
+
+/** Another Claude account signing in: in the browser, checked, waiting for the apps, done or failed. */
+export interface AccountSwitchState {
+  phase: "signing-in" | "checking" | "waiting" | "done" | "failed";
+  /** The sign-in page, to open again or copy. */
+  url?: string;
+  /** The new account, once signed in. */
+  email?: string;
+  error?: string;
 }
 
 export interface GitHubCheck {
@@ -262,6 +274,13 @@ export interface AnyAppBridge {
 
   recheck(): Promise<void>;
   claudeSignIn(): Promise<void>;
+  /** "Use another account": sign in to another Claude account for Kiwimake's Claude. */
+  claudeAnotherStart(): Promise<void>;
+  claudeAnotherCode(code: string): Promise<void>;
+  /** Stops a sign-in that is running (nothing changes), or closes the finished notice. */
+  claudeAnotherCancel(): Promise<void>;
+  /** Switch at once instead of waiting for the apps (their running chats restart on the new account). */
+  claudeAnotherNow(): Promise<void>;
   claudeCancel(): Promise<void>;
   /** The code the fallback sign-in page shows, pasted into the app. */
   claudeSubmitCode(code: string): Promise<void>;

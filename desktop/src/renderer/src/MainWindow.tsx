@@ -3,7 +3,7 @@
 // same chat as on the phone) or today's activity with the phone panels. New app works from here
 // too, with the same fields and words as the phone's New app sheet.
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { ChevronDown, CircleAlert, Cloud, Copy, Download, Ellipsis, EyeOff, FolderOpen, KeyRound, LayoutGrid, ListChecks, Pencil, Pin, PinOff, Plus, QrCode, RefreshCw, Settings as Gear, Smartphone, Trash2, UserRound, Wrench } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Cloud, Copy, Download, Ellipsis, EyeOff, FolderOpen, KeyRound, LayoutGrid, ListChecks, Pencil, Pin, PinOff, Plus, QrCode, RefreshCw, Settings as Gear, Smartphone, Trash2, UserRound, Wrench } from "lucide-react";
 import { DeleteAppDialog, HiddenAppsGroup, Menu, RecentlyDeletedGroup, type MenuItem } from "./AppActions.tsx";
 import { DuplicateAppDialog, RenameAppDialog } from "./DuplicateRename.tsx";
 import { appSections, dropIndex, placePin, samePins, unpin } from "./pins.ts";
@@ -942,6 +942,108 @@ function SigningKeysGroup({ s }: { s: Snapshot }) {
   );
 }
 
+/** "Use another account": the Claude sign-in page for the other account, then the switch (main/claude-account.ts). */
+function AnotherAccount({ s, a }: { s: Snapshot; a: NonNullable<Snapshot["checks"]["claude"]["another"]> }) {
+  const [code, setCode] = useState("");
+  const [showCode, setShowCode] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const now = s.checks.claude.email;
+  const busy = s.apps.some((x) => x.status === "working" || x.status === "building");
+  const box = { padding: "var(--aa-space-lg)", marginBottom: "var(--aa-space-xl)", display: "flex", flexDirection: "column" as const, gap: "var(--aa-space-md)" };
+  if (a.phase === "failed") {
+    return (
+      <div className="card" style={box} role="status">
+        <strong>Kiwimake is still on {now ?? "its account"}</strong>
+        <p className="label problem-text">{a.error ?? "The sign-in did not finish."}</p>
+        <div className="notice-actions">
+          <button className="btn btn-quiet btn-sm" onClick={() => void api.claudeAnotherCancel()}>Close</button>
+          <button className="btn btn-primary btn-sm" onClick={() => void api.claudeAnotherStart()}>Try again</button>
+        </div>
+      </div>
+    );
+  }
+  if (a.phase === "checking" || a.phase === "waiting" || a.phase === "done") {
+    const title = a.phase === "done" ? `Kiwimake now uses ${a.email ?? "the new account"}` : a.phase === "checking" ? "Checking the new account..." : `Signed in as ${a.email ?? "the new account"}`;
+    const text =
+      a.phase === "done"
+        ? "New chats run on this account, and its plan limits start fresh. Your apps and their chats are all still here."
+        : a.phase === "checking"
+          ? "One moment."
+          : busy
+            ? "An app is working right now. It finishes on the account you used before, then Kiwimake switches by itself. Switch now starts that step again on the new account."
+            : "Switching now...";
+    return (
+      <div className="card" style={box} role="status">
+        <div className="row" style={{ gap: "var(--aa-space-sm)" }}>
+          {a.phase !== "done" && <Spinner />}
+          <strong>{title}</strong>
+        </div>
+        <p className="label secondary">{text}</p>
+        {(a.phase === "done" || (a.phase === "waiting" && busy)) && (
+          <div className="notice-actions">
+            {a.phase === "done" ? (
+              <button className="btn btn-primary btn-sm" onClick={() => void api.claudeAnotherCancel()}>OK</button>
+            ) : (
+              <button className="btn btn-quiet btn-sm" onClick={() => void api.claudeAnotherNow()}>Switch now</button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="card" style={box} role="status">
+      <div className="row" style={{ gap: "var(--aa-space-sm)" }}>
+        <Spinner />
+        <strong>Sign in with the other Claude account</strong>
+      </div>
+      <p className="label secondary">
+        Your browser opened the Claude sign-in page. Choose the account you want there. If it shows the account you use now, switch accounts on that page first. Kiwimake keeps using {now ?? "its account"} until you finish, and your apps and chats stay as they are.
+      </p>
+      {a.url ? (
+        <div className="another-link">
+          <span className="label secondary">The sign-in link, to open it in another browser:</span>
+          <span className="mono another-url">{a.url}</span>
+        </div>
+      ) : (
+        <p className="label secondary">Getting the sign-in link...</p>
+      )}
+      {showCode && (
+        <form
+          className="another-code"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (code.trim()) void api.claudeAnotherCode(code.trim());
+            setCode("");
+          }}
+        >
+          <input className="field" placeholder="Paste the code from the page" value={code} onChange={(e) => setCode(e.target.value)} autoFocus />
+          <div className="notice-actions">
+            <button className="btn btn-primary btn-sm" type="submit" disabled={!code.trim()}>Use this code</button>
+          </div>
+        </form>
+      )}
+      <div className="notice-actions">
+        <button className="btn btn-quiet btn-sm" onClick={() => void api.claudeAnotherCancel()}>Cancel</button>
+        {!showCode && <button className="btn btn-quiet btn-sm" onClick={() => setShowCode(true)}>The page shows a code?</button>}
+        {a.url && (
+          <button
+            className="btn btn-quiet btn-sm"
+            onClick={async () => {
+              await api.copyText(a.url!);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2500);
+            }}
+          >
+            <Icon of={copied ? Check : Copy} size="sm" /> {copied ? "Copied" : "Copy the link"}
+          </button>
+        )}
+        {a.url && <button className="btn btn-primary btn-sm" onClick={() => void api.openExternal(a.url!)}>Open the page again</button>}
+      </div>
+    </div>
+  );
+}
+
 function SettingsPage({ s, openSetup }: { s: Snapshot; openSetup: (step: StepId) => void }) {
   const c = s.companion;
   const ecOn = !!s.admin && s.admin.easyConnect.state !== "off";
@@ -953,14 +1055,20 @@ function SettingsPage({ s, openSetup }: { s: Snapshot; openSetup: (step: StepId)
         <h1 className="title">Settings</h1>
       </header>
       <EngineChoice s={s} />
-      <div className="card" style={{ padding: "var(--aa-space-lg)", marginBottom: "var(--aa-space-xl)" }}>
+      <div className="card" style={{ padding: "var(--aa-space-lg)", marginBottom: s.checks.claude.another ? "var(--aa-space-md)" : "var(--aa-space-xl)" }}>
         <p>{s.checks.claude.summary}</p>
         {s.checks.claude.maintenance && <p className="label secondary">{s.checks.claude.maintenance}</p>}
         <div className="notice-actions">
           <button className="btn btn-quiet" onClick={() => openSetup("claude")}>Set up {engineName(s.settings.engine)}</button>
+          {s.settings.engine === "claude" && s.checks.claude.state === "done" && (
+            <button className="btn btn-quiet" disabled={!!s.checks.claude.another || s.checks.claude.signingIn} onClick={() => void api.claudeAnotherStart()}>
+              <Icon of={UserRound} size="sm" /> Use another account
+            </button>
+          )}
           <button className="btn btn-quiet" disabled={s.checks.claude.state === "working" || s.apps.some((a) => a.status === "working" || a.status === "building")} onClick={() => api.engineUpdate()}>Check for updates</button>
         </div>
       </div>
+      {s.checks.claude.another && <AnotherAccount s={s} a={s.checks.claude.another} />}
       <section className="list">
         <div className="srow">
           <div className="srow-main">

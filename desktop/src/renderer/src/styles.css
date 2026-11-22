@@ -254,6 +254,11 @@ button.lrow:hover { background: var(--aa-selected-bg); }
    never beside it (AGENTS.md, design). A row container wraps, and the actions take a line of their own. */
 .notice-actions { width: 100%; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--aa-space-sm); }
 .notice-actions > .state { flex: 1; min-width: 0; }
+/* "Use another account" in Settings: the sign-in link takes the full width, wrapped; the code field too. */
+.another-link { display: flex; flex-direction: column; gap: var(--aa-space-xs); padding: var(--aa-space-md); border-radius: var(--aa-radius-field); background: var(--aa-field-bg); box-shadow: inset 0 0 0 var(--aa-border-width) var(--aa-field-border); }
+.another-url { overflow-wrap: anywhere; user-select: text; color: var(--aa-text); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.another-code { display: flex; flex-direction: column; gap: var(--aa-space-sm); }
+.another-code .field { width: 100%; }
 :is(.notice, .health-notice, .heads-up, .check-card, .connect-row, .srow):has(> .notice-actions) { flex-wrap: wrap; }
 .srow:has(> .notice-actions) { padding-bottom: var(--aa-space-md); }
 
