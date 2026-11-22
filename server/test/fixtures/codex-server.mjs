@@ -6,14 +6,14 @@ createInterface({ input: process.stdin }).on("line", (line) => {
   if (!method || id === undefined) return;
   if (method === "initialize") return send({ id, result: {} });
   if (method === "thread/start" || method === "thread/resume") {
-    if (p.model !== "gpt-6.1-sol" || p.config.model_reasoning_effort !== "high" || p.sandbox !== "danger-full-access") return send({ id, error: { message: "wrong policy" } });
+    if (p.model !== "gpt-6.2-sol" || p.config.model_reasoning_effort !== "high" || p.sandbox !== "danger-full-access") return send({ id, error: { message: "wrong policy" } });
     return send({ id, result: { thread: { id: p.threadId ?? "codex-thread" }, model: p.model } });
   }
   if (method === "turn/interrupt") {
     send({ id, result: {} }); notify("turn/completed", { threadId: "codex-thread", turn: { id: "turn", status: "interrupted" } }); return;
   }
   if (method === "turn/start") {
-    if (p.model !== "gpt-6.1-sol" || p.effort !== "high") return send({ id, error: { message: "wrong turn policy" } });
+    if (p.model !== "gpt-6.2-sol" || p.effort !== "high") return send({ id, error: { message: "wrong turn policy" } });
     send({ id, result: { turn: { id: "turn" } } });
     notify("turn/started", { threadId: "codex-thread", turn: { id: "turn" } });
     if (p.input[0].text === "wait") return;

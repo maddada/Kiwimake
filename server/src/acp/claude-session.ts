@@ -62,6 +62,32 @@ export function agentEnv(base: NodeJS.ProcessEnv = process.env, extra: Record<st
   return { ...env, ...extra };
 }
 
+/**
+ * What differs between the ACP agents Kiwimake runs (Claude's adapter, Antigravity's `agy acp`).
+ * Claude's is the default; acp/antigravity.ts has Antigravity's.
+ */
+export interface AcpAgentProfile {
+  /** For logs only. */
+  label: string;
+  /** The auth method sent before the session starts, when the agent offers it (Claude: cached_token). */
+  authMethod?: string;
+  /** The session mode for full access, when the agent has one (Claude: bypassPermissions). */
+  fullAccessMode?: string;
+  /** Put the playbook in the agent's system prompt when it offers that (Antigravity's _meta.antigravity.systemPrompt). */
+  systemPromptMeta?(initialize: unknown, instructions: string): Record<string, unknown> | undefined;
+  /** Rewrites a session update before Kiwimake reads it (Antigravity's MCP tool names). */
+  normalizeUpdate?(update: unknown): unknown;
+  /** Rewrites a permission request before the chat sees it (Antigravity's own questions). */
+  normalizePermission?(request: AcpPermissionRequest): AcpPermissionRequest;
+  /** A stop reason that means the plan is used up: the turn fails with this message (Antigravity: refusal). */
+  quotaStop?: { stopReason: string; message: string; limit(seenAt: string): PlanLimit; ok(seenAt: string): PlanLimit };
+}
+
+export const CLAUDE_PROFILE: AcpAgentProfile = { label: "Claude", authMethod: "cached_token", fullAccessMode: FULL_ACCESS_MODE_ID };
+
+/** A model and effort, plus the config ids to use when the session lists no options (a resumed one). */
+export type SessionModel = ModelChoice & { configIds?: { model: string; effort: string } };
+
 export interface PermissionAsk {
   request: AcpPermissionRequest;
   responder: AcpAgentRequestResponder;
@@ -78,10 +104,12 @@ export interface ClaudeSessionOptions {
   /** Extra environment for the agent, set after agentEnv's stripping (the `anyapp` command). */
   env?: Record<string, string>;
   launch: LaunchSpec;
+  /** Which ACP agent this is. Absent: Claude's adapter. */
+  profile?: AcpAgentProfile;
   /** Dev and tests only (ANYAPP_ASK_PERMISSIONS=1): stay in the default mode, so permission requests reach the chat. */
   askPermissions?: boolean;
-  /** The cloud: this session's model and effort (session/set_config_option after it starts). */
-  model?: ModelChoice;
+  /** This session's model and effort (session/set_config_option after it starts): the cloud's, or Antigravity's. */
+  model?: SessionModel;
   /** The cloud: labels for usageTaps (the helper id and level). */
   tag?: Record<string, string>;
   /**
@@ -125,9 +153,11 @@ export class ClaudeSession {
   supportsImageInput = false;
   private loading = false;
   private canResume = false;
+  private readonly profile: AcpAgentProfile;
 
   constructor(options: ClaudeSessionOptions) {
     this.options = options;
+    this.profile = options.profile ?? CLAUDE_PROFILE;
     this.pendingInstructions = options.instructions;
   }
 
@@ -142,7 +172,8 @@ export class ClaudeSession {
       args: launch.args,
       cwd,
       env: agentEnv(process.env, this.options.env),
-      onSessionUpdate: (sessionId, update) => {
+      onSessionUpdate: (sessionId, raw) => {
+        const update = this.profile.normalizeUpdate ? this.profile.normalizeUpdate(raw) : raw;
         // The plan's limits are the account's, whichever session reports them (also while loading).
         const limit = this.options.onPlanLimit ? planLimitFrom(update) : null;
         if (limit) this.options.onPlanLimit!(limit);
@@ -165,9 +196,13 @@ export class ClaudeSession {
       const promptCaps = isJsonObject(agent["promptCapabilities"]) ? agent["promptCapabilities"] : {};
       this.supportsImageInput = promptCaps["image"] === true;
       const authMethods = isJsonObject(init) && Array.isArray(init["authMethods"]) ? init["authMethods"] : [];
-      if (authMethods.some((m) => isJsonObject(m) && m["id"] === "cached_token")) {
-        await connection.request("authenticate", { methodId: "cached_token", _meta: { headless: true } }, 60_000);
+      const authMethod = this.profile.authMethod;
+      if (authMethod && authMethods.some((m) => isJsonObject(m) && m["id"] === authMethod)) {
+        await connection.request("authenticate", { methodId: authMethod, _meta: { headless: true } }, 60_000);
       }
+      // The playbook as the agent's own system prompt, when it takes one (then no prompt block).
+      const meta = this.profile.systemPromptMeta?.(init, this.options.instructions);
+      const metaParam = meta ? { _meta: meta } : {};
 
       let configState: unknown;
       const resumeId = this.options.resumeSessionId;
@@ -175,11 +210,11 @@ export class ClaudeSession {
         const method = supportsResume ? "session/resume" : "session/load";
         this.loading = true;
         try {
-          configState = await connection.request(method, { sessionId: resumeId, cwd, mcpServers: this.options.mcpServers ?? [] }, ACP_SESSION_SETUP_TIMEOUT_MS);
+          configState = await connection.request(method, { sessionId: resumeId, cwd, mcpServers: this.options.mcpServers ?? [], ...metaParam }, ACP_SESSION_SETUP_TIMEOUT_MS);
           this.sessionId = resumeId;
           this.resumed = true;
           if (!this.options.instructionsOnResume) this.pendingInstructions = undefined;
-          this.options.log(`${method} restored Claude Code session ${resumeId}`);
+          this.options.log(`${method} restored ${this.profile.label} session ${resumeId}`);
         } catch (error) {
           this.options.log(`could not restore session ${resumeId} (${(error as Error).message}); starting a new one`);
         } finally {
@@ -187,11 +222,13 @@ export class ClaudeSession {
         }
       }
       if (this.sessionId === "") {
-        configState = await connection.request("session/new", { cwd, mcpServers: this.options.mcpServers ?? [] }, ACP_SESSION_SETUP_TIMEOUT_MS);
+        configState = await connection.request("session/new", { cwd, mcpServers: this.options.mcpServers ?? [], ...metaParam }, ACP_SESSION_SETUP_TIMEOUT_MS);
         const sessionId = isJsonObject(configState) ? readString(configState, "sessionId") : undefined;
-        if (!sessionId) throw new Error("Claude Code did not return a session id");
+        if (!sessionId) throw new Error("The agent did not return a session id");
         this.sessionId = sessionId;
-        this.options.log(`session/new created Claude Code session ${sessionId}`);
+        // A new session has the playbook in its system prompt already.
+        if (meta) this.pendingInstructions = undefined;
+        this.options.log(`session/new created ${this.profile.label} session ${sessionId}`);
       }
       if (!this.options.askPermissions) await this.selectFullAccessMode(configState);
       else await this.connection.request("session/set_mode", { sessionId: this.sessionId, modeId: "default" }, 30_000).catch(() => undefined);
@@ -206,13 +243,15 @@ export class ClaudeSession {
    * The model first, then the effort (the adapter offers effort levels per model), with ACP's
    * session/set_config_option, as the cloud spike proved (docs/CLOUD.md, "Models").
    */
-  private async selectModel(configState: unknown, choice: ModelChoice): Promise<void> {
+  private async selectModel(configState: unknown, choice: SessionModel): Promise<void> {
     type Option = { id: string; category?: string };
     const optionsOf = (state: unknown): Option[] =>
       isJsonObject(state) && Array.isArray(state["configOptions"]) ? (state["configOptions"] as Option[]).filter((o) => isJsonObject(o) && typeof o.id === "string") : [];
     let options = optionsOf(configState);
     const isModel = (o: Option) => o.category === "model" || o.id === "model";
     const isEffort = (o: Option) => o.category === "thought_level" || o.id === "effort";
+    // A resumed session may not list its options: use the agent's usual ids.
+    if (options.length === 0 && choice.configIds) options = [{ id: choice.configIds.model, category: "model" }, { id: choice.configIds.effort, category: "thought_level" }];
     try {
       const model = options.find(isModel);
       if (model) {
@@ -231,17 +270,18 @@ export class ClaudeSession {
   // bypassPermissions session mode, selected the way bb applies a session mode (session/set_mode),
   // so most tool calls never ask at all.
   private async selectFullAccessMode(configState: unknown): Promise<void> {
+    const fullAccess = this.profile.fullAccessMode;
     const modes = isJsonObject(configState) && isJsonObject(configState["modes"]) ? configState["modes"] : undefined;
     const available = modes && Array.isArray(modes["availableModes"]) ? modes["availableModes"] : [];
     const current = modes ? readString(modes, "currentModeId") : undefined;
     this.modeId = current;
-    if (current === FULL_ACCESS_MODE_ID) return;
-    if (!available.some((mode) => isJsonObject(mode) && mode["id"] === FULL_ACCESS_MODE_ID)) return;
+    if (!fullAccess || current === fullAccess) return;
+    if (!available.some((mode) => isJsonObject(mode) && mode["id"] === fullAccess)) return;
     try {
-      await this.connection!.request("session/set_mode", { sessionId: this.sessionId, modeId: FULL_ACCESS_MODE_ID }, 30_000);
-      this.modeId = FULL_ACCESS_MODE_ID;
+      await this.connection!.request("session/set_mode", { sessionId: this.sessionId, modeId: fullAccess }, 30_000);
+      this.modeId = fullAccess;
     } catch (error) {
-      this.options.log(`session/set_mode ${FULL_ACCESS_MODE_ID} failed: ${(error as Error).message}`);
+      this.options.log(`session/set_mode ${fullAccess} failed: ${(error as Error).message}`);
     }
   }
 
@@ -252,7 +292,7 @@ export class ClaudeSession {
    * file when the agent does not take images.
    */
   async prompt(text: string, images: PromptImage[] = []): Promise<string> {
-    if (!this.connection || this.connection.exited) throw new Error("The Claude Code session is not running");
+    if (!this.connection || this.connection.exited) throw new Error("The agent session is not running");
     const prompt: AcpPromptBlock[] = [];
     if (this.pendingInstructions) {
       prompt.push({ type: "text", text: `<system_instructions>\n${this.pendingInstructions}\n</system_instructions>` });
@@ -288,7 +328,14 @@ export class ClaudeSession {
         this.options.log(`usage could not be counted: ${(error as Error).message}`);
       }
     }
-    return isJsonObject(result) ? (readString(result, "stopReason") ?? "end_turn") : "end_turn";
+    const stopReason = isJsonObject(result) ? (readString(result, "stopReason") ?? "end_turn") : "end_turn";
+    const quota = this.profile.quotaStop;
+    if (quota && stopReason === quota.stopReason) {
+      this.options.onPlanLimit?.(quota.limit(new Date().toISOString()));
+      throw new Error(quota.message);
+    }
+    if (quota && stopReason === "end_turn") this.options.onPlanLimit?.(quota.ok(new Date().toISOString()));
+    return stopReason;
   }
 
   cancel(): void {
@@ -302,9 +349,11 @@ export class ClaudeSession {
   private async handleRequest(method: string, params: unknown, responder: AcpAgentRequestResponder): Promise<void> {
     try {
       switch (method) {
-        case "session/request_permission":
-          this.options.onPermission({ request: decodeAcpPermissionRequest(params), responder });
+        case "session/request_permission": {
+          const request = decodeAcpPermissionRequest(params);
+          this.options.onPermission({ request: this.profile.normalizePermission ? this.profile.normalizePermission(request) : request, responder });
           return;
+        }
         case "fs/read_text_file": {
           if (!isJsonObject(params) || typeof params["path"] !== "string") {
             responder.error(-32602, "Invalid fs/read_text_file params");

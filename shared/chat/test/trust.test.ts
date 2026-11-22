@@ -89,3 +89,14 @@ test("the PC's engine is named: Claude by default, Codex when the companion says
   assert.match(planLine({ engine: "codex", kind: "codex_secondary", status: "allowed_warning", seenAt: "" }, now).text, /^Codex says you are close to your Codex weekly limit/);
   for (const x of [h.title, h.body]) assert.doesNotMatch(x, /\u2014/);
 });
+
+test("Antigravity is named too, and its used-up quota asks for a rest", () => {
+  assert.equal(aiName({ engine: "antigravity" }), "Antigravity");
+  assert.match(planUnknown({ engine: "antigravity" }), /^Antigravity has not shared/);
+  const out: UsageState = { engine: "antigravity", plan: [{ engine: "antigravity", kind: "antigravity_quota", status: "rejected", seenAt: "" }], month: u(0), monthKey: "2026-11" };
+  const h = headsUp({ text: "tiny", usage: out, now })!;
+  assert.equal(h.title, "Your Antigravity plan needs a rest");
+  assert.match(h.body, /^Antigravity quota is used up\. Changes wait until then\.$/);
+  assert.equal(planLine({ engine: "antigravity", kind: "antigravity_quota", status: "allowed", seenAt: "" }, now).text, "Antigravity quota: Antigravity says there is room.");
+  for (const x of [h.title, h.body]) assert.doesNotMatch(x, /\u2014/);
+});

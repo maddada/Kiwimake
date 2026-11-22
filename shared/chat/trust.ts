@@ -26,9 +26,9 @@ export function usageLine(u: TokenUsage | undefined): string | null {
   return `Used ${formatTokens(n)} tokens`;
 }
 
-/** The engine the PC uses, by name: "Claude" unless the companion says Codex (UsageState.engine). */
-export function aiName(usage?: { engine?: string }): "Claude" | "Codex" {
-  return usage?.engine === "codex" ? "Codex" : "Claude";
+/** The engine the PC uses, by name: "Claude" unless the companion says Codex or Antigravity (UsageState.engine). */
+export function aiName(usage?: { engine?: string }): "Claude" | "Codex" | "Antigravity" {
+  return usage?.engine === "codex" ? "Codex" : usage?.engine === "antigravity" ? "Antigravity" : "Claude";
 }
 
 /** The longer form: "plus 1.1M read again from earlier in the chat, which counts for much less". */
@@ -72,8 +72,9 @@ export interface PlanLine {
 
 /** One line per limit Claude reported: "5-hour limit: 62% used, resets at 16:00". */
 export function planLine(limit: PlanLimit, now: Date = new Date()): PlanLine {
-  const engine = limit.engine === "codex" ? "Codex" : "Claude";
-  const name = limit.kind.startsWith("codex_") ? (limit.kind === "codex_primary" ? "Codex session limit" : "Codex weekly limit") : limitName(limit.kind);
+  const engine = aiName(limit);
+  const name = limit.kind.startsWith("codex_") ? (limit.kind === "codex_primary" ? "Codex session limit" : "Codex weekly limit")
+    : limit.kind === "antigravity_quota" ? "Antigravity quota" : limitName(limit.kind);
   const Name = name[0].toUpperCase() + name.slice(1);
   const resets = limit.resetsAt ? resetLabel(limit.resetsAt, now) : "";
   if (limit.status === "rejected") {

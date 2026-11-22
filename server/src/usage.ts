@@ -12,6 +12,7 @@ import { join } from "node:path";
 import type { AppUsage, PlanLimit, TokenUsage, UsageState } from "../../shared/protocol.ts";
 import { isJsonObject } from "./acp/acp-client.ts";
 import { nowIso, readJson, writeJsonAtomic } from "./fs-util.ts";
+import type { Engine } from "../../shared/engines.mts";
 
 export const ZERO_USAGE: TokenUsage = { inputTokens: 0, outputTokens: 0, cacheWriteTokens: 0, cacheReadTokens: 0 };
 
@@ -103,7 +104,7 @@ export class UsageMeter {
   /** The plan (or the month total) changed: clients get a new CareState. */
   onChange: () => void = () => {};
   /** The PC's engine (the companion restarts when it changes). Its plan limits are the ones shown. */
-  engine: "claude" | "codex" = "claude";
+  engine: Engine = "claude";
   private readonly now: () => Date;
 
   /** `claudeAccount`: claudeAccountKey() of the account Claude runs as now; Claude limits seen on another are dropped. */

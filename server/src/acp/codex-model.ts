@@ -21,7 +21,7 @@ interface Saved {
 
 /**
  * Codex's refusal of a model the ChatGPT plan does not include, for exactly this model:
- * "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account."
+ * "The 'gpt-6.2-sol' model is not supported when using Codex with a ChatGPT account."
  * Anything else (rate limits, a network error, another model's name) is not this.
  */
 export function isPlanModelRefusal(message: string, model: string): boolean {

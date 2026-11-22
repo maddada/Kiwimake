@@ -3,29 +3,27 @@
 import { existsSync, realpathSync, statSync } from "node:fs";
 import { delimiter, dirname, join } from "node:path";
 
-export type Engine = "claude" | "codex";
-export const engineName = (engine: Engine): string => engine === "codex" ? "Codex" : "Claude";
-export const CODEX_MODEL = "gpt-6.1-sol";
-/** When the signed-in ChatGPT plan refuses CODEX_MODEL (a free plan), the companion uses this one (server/src/acp/codex-model.ts). */
-export const CODEX_FALLBACK_MODEL = "gpt-6-luna";
-export const CODEX_EFFORT = "high";
-export const isEngine = (value: unknown): value is Engine => value === "claude" || value === "codex";
+export * from "./engine-names.mts";
+import type { Engine } from "./engine-names.mts";
 
 export function engineCandidates(engine: Engine, env: NodeJS.ProcessEnv = process.env, platform = process.platform): string[] {
-  const override = engine === "claude" ? env.CLAUDE_CODE_EXECUTABLE : env.CODEX_EXECUTABLE;
+  const override = engine === "claude" ? env.CLAUDE_CODE_EXECUTABLE : engine === "codex" ? env.CODEX_EXECUTABLE : env.ANTIGRAVITY_EXECUTABLE;
   if (override) return [override]; // A broken explicit override must not silently run another copy.
   const win = platform === "win32";
   const home = (win ? env.USERPROFILE : env.HOME) ?? env.HOME;
   // The Claude Agent SDK spawns CLAUDE_CODE_EXECUTABLE directly, and Windows cannot spawn a .cmd
   // shim that way, so Claude counts only as an .exe (an npm install's native binary included).
-  // Codex runs through cross-spawn, which handles npm's .cmd shims.
-  const names = !win ? [engine] : engine === "claude" ? ["claude.exe", join("node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe")] : ["codex.exe", "codex.cmd"];
+  // Codex runs through cross-spawn, which handles npm's .cmd shims. Antigravity's CLI is `agy`.
+  const names = engine === "antigravity" ? [win ? "agy.exe" : "agy"]
+    : !win ? [engine] : engine === "claude" ? ["claude.exe", join("node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe")] : ["codex.exe", "codex.cmd"];
   const path = Object.entries(env).find(([key]) => key.toLowerCase() === "path")?.[1] ?? "";
   const dirs = path.split(win ? ";" : ":").filter(Boolean).map((p) => p.replace(/^"|"$/g, ""));
   // Session wrappers from another host are not the installed CLI.
   const safeDirs = dirs.filter((p) => !/ghostex[\\/].*session-bin/i.test(p));
   if (home) safeDirs.push(join(home, ".local", "bin"));
   if (win && env.LOCALAPPDATA) safeDirs.push(join(env.LOCALAPPDATA, "Programs", "OpenAI", "Codex", "bin"));
+  // Where Google's install.ps1 puts agy.exe (install.sh uses ~/.local/bin, added above).
+  if (win && env.LOCALAPPDATA) safeDirs.push(join(env.LOCALAPPDATA, "agy", "bin"));
   if (win && env.APPDATA) safeDirs.push(join(env.APPDATA, "npm"));
   if (!win) safeDirs.push("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin");
   return [...new Set(safeDirs.flatMap((dir) => names.map((name) => join(dir, name))))];
@@ -43,6 +41,8 @@ export function engineUpdate(engine: Engine, cli: string, real = (p: string) => 
   let target: string;
   try { target = real(cli).replace(/\\/g, "/"); } catch { return undefined; }
   const lower = target.toLowerCase();
+  // Antigravity has no package manager release: its own installer's copy updates itself.
+  if (engine === "antigravity") return /\/\.local\/bin\/agy$|\/agy\/bin\/agy\.exe$/.test(lower) ? { command: cli, args: ["update"] } : undefined;
   const pkg = engine === "claude" ? "@anthropic-ai/claude-code" : "@openai/codex";
   if (lower.includes("/mise/") || lower.includes("/mise/shims/")) return { command: "mise", args: ["upgrade", engine] };
   if (/\/homebrew\/|\/cellar\/|\/caskroom\//.test(lower)) return { command: "brew", args: ["upgrade", "--cask", engine === "claude" ? "claude-code" : "codex"] };
@@ -61,8 +61,8 @@ export function engineUpdate(engine: Engine, cli: string, real = (p: string) => 
 }
 
 export function engineInstaller(engine: Engine, platform = process.platform): { url: string; shell: string; args: (file: string) => string[] } {
-  const base = engine === "claude" ? "https://claude.ai" : "https://chatgpt.com/codex";
+  const base = engine === "claude" ? "https://claude.ai" : engine === "codex" ? "https://chatgpt.com/codex" : "https://antigravity.google/cli";
   return platform === "win32"
     ? { url: `${base}/install.ps1`, shell: "powershell.exe", args: (file) => ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", file] }
-    : { url: `${base}/install.sh`, shell: engine === "claude" ? "bash" : "sh", args: (file) => [file] };
+    : { url: `${base}/install.sh`, shell: engine === "codex" ? "sh" : "bash", args: (file) => [file] };
 }

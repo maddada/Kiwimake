@@ -1,5 +1,5 @@
 // A Codex app-server signed in to a ChatGPT plan (FAKE_PLAN, "free" by default) that does not include
-// gpt-6.1-sol: every turn on it fails with Codex's refusal. Its reply says which model answered and
+// gpt-6.2-sol: every turn on it fails with Codex's refusal. Its reply says which model answered and
 // how many messages the thread holds, so a retry that says the message twice shows.
 import { createInterface } from "node:readline";
 const plan = process.env.FAKE_PLAN ?? "free";
@@ -26,8 +26,8 @@ createInterface({ input: process.stdin }).on("line", (line) => {
     if (p.input[0].text === "limit") {
       return notify("turn/completed", { threadId: "codex-thread", turn: { id: turn, status: "failed", error: { message: "Usage limit reached. Try again at 16:30." } } });
     }
-    if (p.model === "gpt-6.1-sol" && plan === "free") {
-      return notify("turn/completed", { threadId: "codex-thread", turn: { id: turn, status: "failed", error: { message: "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account." } } });
+    if (p.model === "gpt-6.2-sol" && plan === "free") {
+      return notify("turn/completed", { threadId: "codex-thread", turn: { id: turn, status: "failed", error: { message: "The 'gpt-6.2-sol' model is not supported when using Codex with a ChatGPT account." } } });
     }
     const text = `${p.model} says hi (${history.length} message${history.length === 1 ? "" : "s"})`;
     notify("item/completed", { threadId: "codex-thread", item: { id: `msg-${turn}`, type: "agentMessage", text } });

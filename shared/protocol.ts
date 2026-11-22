@@ -113,8 +113,8 @@ export interface ApkVariant {
 export type AppPreset = "react-native" | "kotlin" | "expo-exact" | "web" | "game";
 
 export interface App {
-  /** The PC engine most recently used for this app. Absent on older companions. */
-  engine?: "claude" | "codex";
+  /** The PC engine most recently used for this app. Absent on older companions. Added: "antigravity". */
+  engine?: "claude" | "codex" | "antigravity";
   id: string;
   name: string; // what the user typed, shown under the icon
   slug: string;
@@ -841,8 +841,8 @@ export interface AppUsage {
 // One of the Claude plan's limits, only as Claude reported it (a rate limit event). Never estimated:
 // usedPercent is absent when Claude did not say, and then clients show use, not a percentage.
 export interface PlanLimit {
-  /** Which PC engine reported this limit. Absent on older companions means Claude. */
-  engine?: "claude" | "codex";
+  /** Which PC engine reported this limit. Absent on older companions means Claude. Added: "antigravity". */
+  engine?: "claude" | "codex" | "antigravity";
   kind: string; // "five_hour", "seven_day", "seven_day_opus", ... (Claude's own names)
   status: "allowed" | "allowed_warning" | "rejected";
   usedPercent?: number; // 0 to 100
@@ -850,8 +850,8 @@ export interface PlanLimit {
   seenAt: string; // when Claude last reported it
 }
 export interface UsageState {
-  /** Added: the PC's engine, so clients name it ("Claude" or "Codex"). Absent on older companions means Claude. */
-  engine?: "claude" | "codex";
+  /** Added: the PC's engine, so clients name it ("Claude", "Codex" or "Antigravity", the last added later). Absent on older companions means Claude. */
+  engine?: "claude" | "codex" | "antigravity";
   plan: PlanLimit[]; // empty when Claude has not reported a limit
   month: TokenUsage; // every app together, this month
   monthKey: string;

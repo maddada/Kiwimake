@@ -9,20 +9,20 @@ import { CODEX_FALLBACK_MODEL, CODEX_MODEL } from "../../shared/engines.mts";
 import { accountKey, CodexModels, isPlanModelRefusal } from "../src/acp/codex-model.ts";
 import { CodexSession } from "../src/acp/codex-session.ts";
 
-const REFUSAL = "The 'gpt-6.1-sol' model is not supported when using Codex with a ChatGPT account.";
+const REFUSAL = "The 'gpt-6.2-sol' model is not supported when using Codex with a ChatGPT account.";
 const fixture = fileURLToPath(new URL("./fixtures/codex-free-plan.mjs", import.meta.url));
 
 describe("Codex on a plan without its usual model", () => {
   it("knows Codex's refusal of exactly this model, and nothing else", () => {
-    expect(CODEX_MODEL).toBe("gpt-6.1-sol");
+    expect(CODEX_MODEL).toBe("gpt-6.2-sol");
     expect(CODEX_FALLBACK_MODEL).toBe("gpt-6-luna");
     expect(isPlanModelRefusal(REFUSAL, CODEX_MODEL)).toBe(true);
     expect(isPlanModelRefusal(`Error: ${REFUSAL.toLowerCase()}`, CODEX_MODEL)).toBe(true);
     expect(isPlanModelRefusal(REFUSAL, CODEX_FALLBACK_MODEL)).toBe(false);
-    expect(isPlanModelRefusal("The 'gpt-6.1-sol-mini' model is not supported when using Codex with a ChatGPT account.", CODEX_MODEL)).toBe(false);
+    expect(isPlanModelRefusal("The 'gpt-6.2-sol-mini' model is not supported when using Codex with a ChatGPT account.", CODEX_MODEL)).toBe(false);
     expect(isPlanModelRefusal("The 'gpt-6x1-sol' model is not supported when using Codex with a ChatGPT account.", CODEX_MODEL)).toBe(false);
     expect(isPlanModelRefusal("Usage limit reached. Try again at 16:30.", CODEX_MODEL)).toBe(false);
-    expect(isPlanModelRefusal("The 'gpt-6.1-sol' model is not supported.", CODEX_MODEL)).toBe(false);
+    expect(isPlanModelRefusal("The 'gpt-6.2-sol' model is not supported.", CODEX_MODEL)).toBe(false);
   });
 
   it("keys the sign-in by a hash of the account and plan, never the account itself", () => {
@@ -84,7 +84,7 @@ describe("Codex on a plan without its usual model", () => {
       // The refused turn was dropped from the thread, so the message is there once.
       expect(first.said()).toBe("gpt-6-luna says hi (1 message)");
       expect(first.session.model).toBe(CODEX_FALLBACK_MODEL);
-      expect(first.logs.join("\n")).toContain("does not include gpt-6.1-sol");
+      expect(first.logs.join("\n")).toContain("does not include gpt-6.2-sol");
       expect(new CodexModels(state).state()).toEqual({ model: CODEX_FALLBACK_MODEL, fallback: true });
       // The same chat keeps the fallback.
       await first.session.prompt("Make it blue");
@@ -103,7 +103,7 @@ describe("Codex on a plan without its usual model", () => {
       const paid = await open("plus");
       expect(paid.session.model).toBe(CODEX_MODEL);
       await paid.session.prompt("A bakery menu");
-      expect(paid.said()).toBe("gpt-6.1-sol says hi (1 message)");
+      expect(paid.said()).toBe("gpt-6.2-sol says hi (1 message)");
       expect(new CodexModels(state).state()).toEqual({ model: CODEX_MODEL });
     } finally {
       await Promise.all(sessions.map((s) => s.stop()));

@@ -3,6 +3,7 @@ import { join, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFileSync } from "node:fs";
 import { cloudSettingsFromEnv, type CloudSettings } from "./cloud-settings.ts";
+import { isEngine, type Engine } from "../../shared/engines.mts";
 
 export const SERVER_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const REPO_DIR = resolve(SERVER_DIR, "..");
@@ -10,7 +11,7 @@ export const REPO_DIR = resolve(SERVER_DIR, "..");
 const pkg = JSON.parse(readFileSync(join(SERVER_DIR, "package.json"), "utf8")) as { version: string };
 
 export interface Config {
-  engine?: "claude" | "codex";
+  engine?: Engine;
   version: string;
   host: string;
   port: number;
@@ -35,7 +36,7 @@ export interface Config {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const builder = env.ANYAPP_BUILDER === "real" || env.ANYAPP_BUILDER === "fake" ? env.ANYAPP_BUILDER : "auto";
   return {
-    engine: env.ANYAPP_ENGINE === "codex" ? "codex" : "claude",
+    engine: isEngine(env.ANYAPP_ENGINE) ? env.ANYAPP_ENGINE : "claude",
     version: pkg.version,
     host: env.ANYAPP_HOST ?? "0.0.0.0",
     port: Number(env.ANYAPP_PORT ?? 8787),
