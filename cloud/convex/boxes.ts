@@ -12,6 +12,7 @@ import { BOX } from './config';
 import { randomToken, sha256Hex } from './lib/crypto';
 import { boxProvider } from './lib/instabox';
 import { ProviderError } from './lib/provider';
+import { reportError } from './lib/errors';
 
 const now = () => Date.now();
 
@@ -192,7 +193,7 @@ export const create = internalAction({
       await ctx.runMutation(internal.boxes.patchThread, { threadId, patch: { boxState: 'running', runnerSeenAt: undefined } });
     } catch (e) {
       const f = friendly(e);
-      console.error('box create failed:', (e as Error).message);
+      await reportError(e, 'boxes.create', { threadId: String(threadId) });
       if (boxId) await ctx.runMutation(internal.boxes.patchBox, { boxId, patch: { error: (e as Error).message.slice(0, 300) } });
       // A half-made box is deleted so it never costs anything.
       if (boxId) await ctx.scheduler.runAfter(0, internal.boxes.deleteBox, { boxId });
@@ -226,7 +227,7 @@ export const wake = internalAction({
       // A resumed runner carries on without a new hello, so the "Waking up" note goes here.
       await ctx.runMutation(internal.boxes.patchThread, { threadId, patch: { boxState: 'running', boxNote: undefined } });
     } catch (e) {
-      console.error('box wake failed:', (e as Error).message);
+      await reportError(e, 'boxes.wake', { threadId: String(threadId) });
       await ctx.runMutation(internal.boxes.startFailed, { threadId, ...friendly(e), back: 'paused' });
       return;
     }
@@ -279,7 +280,7 @@ export const startRunner = internalAction({
       }
       await ctx.runMutation(internal.boxes.patchThread, { threadId, patch: { boxState: 'running', boxNote: undefined } });
     } catch (e) {
-      console.error('runner start failed:', (e as Error).message);
+      await reportError(e, 'boxes.startRunner', { threadId: String(threadId) });
       await ctx.runMutation(internal.boxes.startFailed, { threadId, message: 'Your app’s machine is up but did not get ready. Trying again in a minute.', retryMs: 60_000, back: 'running' });
     }
   },
@@ -297,7 +298,7 @@ export const pause = internalAction({
       await ctx.runMutation(internal.boxes.patchBox, { boxId: s.box._id, patch: { pausedAt: now() } });
       await ctx.runMutation(internal.boxes.markPaused, { threadId });
     } catch (e) {
-      console.error('box pause failed:', (e as Error).message);
+      await reportError(e, 'boxes.pause', { threadId: String(threadId) });
     }
   },
 });
@@ -350,7 +351,7 @@ export const snapshotAndDelete = internalAction({
       await p.delete(s.box.providerId);
       if (old && old !== snap.id) await p.deleteSnapshot(old);
     } catch (e) {
-      console.error('snapshot failed:', (e as Error).message);
+      await reportError(e, 'boxes.snapshot', { threadId: String(threadId) });
     }
   },
 });

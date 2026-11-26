@@ -15,6 +15,7 @@ import { hmacSha256B64, openSecret, randomToken, sha256Hex, unb64 } from './lib/
 import { pcLinkPage } from './lib/pcLinkPage';
 import { cleanCode, hasScope, linkCode, REQUEST_MS, showCode, type PcAuth, type PcScope } from './pclinks';
 import { sealTo } from './lib/transport';
+import { reportError } from './lib/errors';
 
 const http = httpRouter();
 auth.addHttpRoutes(http);
@@ -30,6 +31,29 @@ http.route({ pathPrefix: '/page/', method: 'POST', handler: pageRoute });
 
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+
+// For an uptime monitor (docs/CLOUD.md section 4): answers only when the deployment reads its database.
+http.route({
+  path: '/health',
+  method: 'GET',
+  handler: httpAction(async (ctx) => {
+    try {
+      return json(200, { ok: true, ...(await ctx.runQuery(internal.health.ping, {})) });
+    } catch (e) {
+      await reportError(e, '/health');
+      return json(503, { ok: false });
+    }
+  }),
+});
+
+// The deployment's own address (<name>.convex.site, Convex Starter has no custom domain): a short
+// page pointing at kiwimake.ai, carrying Google Search Console's verification tag when
+// GOOGLE_SITE_VERIFICATION is set, so Google sign-in's authorized domain can be verified.
+http.route({
+  path: '/',
+  method: 'GET',
+  handler: httpAction(async () => new Response(rootPage(process.env.GOOGLE_SITE_VERIFICATION), { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } })),
+});
 
 type RunnerAuth = { threadId: Id<'threads'>; appId: Id<'apps'>; userId: Id<'users'> };
 
@@ -49,7 +73,7 @@ function runnerRoute(path: string, handler: (ctx: ActionCtx, req: Request, r: Ru
       try {
         return await handler(ctx, req, r);
       } catch (e) {
-        console.error(`${path}:`, (e as Error).message);
+        await reportError(e, path, { route: 'runner' });
         return json(500, { error: (e as Error).message.slice(0, 300) });
       }
     }),
@@ -184,7 +208,7 @@ export function pcRoute(path: string, scope: PcScope | null, handler: (ctx: Acti
         await ctx.runMutation(internal.pclinks.seen, { linkId: pc.linkId });
         return await handler(ctx, req, pc);
       } catch (e) {
-        console.error(`${path}:`, (e as Error).message);
+        await reportError(e, path, { route: 'pc' });
         return json(500, { error: (e as Error).message.slice(0, 300) });
       }
     }),
@@ -459,5 +483,18 @@ pcRoute('/pc/pull-back/done', 'move', async (ctx, req, pc) => {
   const app = await readyRow(ctx, pc, field(b, 'appId'));
   return json(200, await ctx.runMutation(internal.pcoff.pulledBack, { appId: app._id, commit: field(b, 'commit') }));
 });
+
+/** The root page of the deployment's site. */
+export function rootPage(verification: string | undefined): string {
+  const tag = verification && /^[A-Za-z0-9_-]{10,100}$/.test(verification) ? `\n<meta name="google-site-verification" content="${verification}">` : '';
+  return `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Kiwimake Cloud</title>${tag}
+<meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="font-family: system-ui, sans-serif; max-width: 34rem; margin: 4rem auto; padding: 0 1rem">
+<h1>Kiwimake Cloud</h1>
+<p>This address is Kiwimake's cloud service. Kiwimake itself is at <a href="https://kiwimake.ai">kiwimake.ai</a>, with its <a href="https://kiwimake.ai/privacy">privacy policy</a> and <a href="https://kiwimake.ai/terms">terms</a>.</p>
+</body></html>
+`;
+}
 
 export default http;

@@ -7,7 +7,8 @@
   "scripts": {
     "deploy:dev": "node spike/convex.mjs deploy",
     "typecheck": "tsc --noEmit -p convex",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:node": "node --test runner/*.test.mjs backup/*.test.mjs"
   },
   "dependencies": {
     "@auth/core": "0.41.3",
