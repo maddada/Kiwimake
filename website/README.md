@@ -94,6 +94,18 @@ Provider references:
 [Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
 and [Porkbun nameserver propagation](https://kb.porkbun.com/article/35-how-long-will-it-take-to-switch-nameservers).
 
+## Pricing and legal pages (drafts, 26 November 2026)
+
+`/pricing`, `/terms`, `/privacy` and `/refunds` (`public/*.html`), linked from every footer and from
+the pricing page's sign-up section. They are **drafts for the owner and a lawyer**: highlighted
+`[PLACEHOLDERS]` (`class="ph"`), "For review" notes (`class="review"`) and a "Draft for review"
+banner on each page. Before deploying, fill or remove them all, so that
+`grep -n 'class="ph"\|class="review"\|draft-banner' public/*.html` prints nothing. Plans and prices
+come from `cloud/convex/config.ts`; change both together.
+
+Preview locally (the Worker redirects plain HTTP, so serve HTTPS):
+`npx --yes wrangler@4.161.0 dev --local-protocol https`.
+
 ## Ready apps list
 
 `public/gallery.json` is the gallery of official Kiwimake apps (`docs/GALLERY.md`), served at
