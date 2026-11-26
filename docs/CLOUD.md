@@ -698,6 +698,54 @@ instructions say which level each piece of work gets:
   share plus the planned helpers' levels, each from the app's (or everyone's) past medians for that
   level. Machine time is the box's, shared by all of them, so it is not split per helper.
 
+### OpenCode, a second cloud engine (added 2026-11-26)
+
+The user asked for the cloud agent on "opencode go subscription with a model like the latest
+deepseek". Built behind a setting; **Claude stays the default**, and the Own key plan always runs
+Claude (the person's Anthropic key).
+
+- **The terms decide the provider, not the agent.** OpenCode's Terms of Service
+  (https://opencode.ai/legal/terms-of-service, effective 25 Nov 2026): "You will only use the
+  Services for your own internal use, and not on behalf of or for the benefit of any third party",
+  and no making "any account, API key, credentials, or Credits available to any third party, except
+  as expressly approved by OpenCode in writing". That covers OpenCode Go and the pay-as-you-go
+  Console (formerly Zen), so one Go subscription may not run people's changes. DeepSeek's own API
+  terms allow "providing services to both internal and external end users"
+  (https://cdn.deepseek.com/policies/en-US/deepseek-open-platform-terms-of-service.html, 1.1). So
+  the cloud's OpenCode engine calls **DeepSeek's API** by default; OpenCode Go is only for the
+  owner's own tests (or after OpenCode approves it in writing). The opencode CLI itself is MIT.
+  Sources and quotes: `~/kiwimake-work/cloud-live/opencode-research.md`.
+- **The setting**: Convex's `CLOUD_AGENT_ENGINE` ("claude" or "opencode", plus
+  `CLOUD_OPENCODE_PROVIDER`, `CLOUD_OPENCODE_MODEL`, `CLOUD_OPENCODE_SIMPLE_MODEL`) goes to the box
+  in the runner's hello, and the runner hands it to the companion as `ANYAPP_CLOUD_ENGINE` and
+  `ANYAPP_OPENCODE_*` (`server/src/cloud-settings.ts`). Defaults: provider `deepseek` (key in
+  `DEEPSEEK_API_KEY`, only ever the Secrets proxy placeholder on the box), the orchestrator and
+  `deep` on `deepseek/deepseek-v4-pro` at `high`, `focused` on it at `default` (DeepSeek has no
+  `medium`), `simple` on `deepseek/deepseek-flash` (V4.1 Flash) at `high`.
+- **How it runs** (`server/src/acp/opencode.ts`): `opencode acp` (2.4.1) through the same ACP
+  session as Claude and Antigravity, as the `agent` Unix user. Each session gets its own
+  `opencode.json` (in `/data/apps/.opencode`, group `kiwi`, mode 0640) named by `OPENCODE_CONFIG`
+  on the command line after sudo (a path, never a key): the model, `small_model` on the same
+  provider (titles), the provider's key as `{env:DEEPSEEK_API_KEY}`, permission `"*": "allow"`
+  (no prompts; OpenCode has no ACP session modes), and denied: its own `question` and `subagent`
+  (the person is on a phone; helpers are Kiwimake's, metered at their level), Code Mode's
+  `execute`, paid image and video generators, web search, automations and `opencode_*`. Kiwimake's
+  MCP servers go in that file with `codemode: false`, because servers given in session/new reach
+  the model only inside Code Mode; their tools then arrive as `<server>_<tool>` and are renamed
+  `mcp__<server>__<tool>` so the chat hides them as it does for Claude. DeepSeek V4 Pro takes no
+  pictures, so pictures go to it as a line naming the file. Usage comes from session/prompt as for
+  Claude (`inputTokens` without cache reads, `outputTokens`, `cachedReadTokens`) and Convex prices
+  it per model (`MODEL_PRICES`).
+- **Wording**: with OpenCode the playbook says "Kiwimake's AI agent, powered by DeepSeek", and
+  errors name "Kiwimake's AI", never a provider or "Claude Code".
+- **Proven** (2026-11-26, no paid calls): `server/test/opencode.test.ts` runs the real `opencode
+  acp` with its own home through Kiwimake's session against a stub DeepSeek API and a stub MCP
+  server: V4 Pro at `high` (`reasoning_effort: "high"` on the wire), the key's header right, the
+  playbook in the first prompt, `app_set_app_kind` offered as a plain tool and none of the denied
+  ones, the tool called and shown as `mcp__app__set_app_kind`, titles on Flash, usage counted.
+  **Not run:** a real DeepSeek call, a box with the `anyapp-box-v2` image
+  (`cloud/box/provision-v2.sh`), and a change from the phone on this engine.
+
 **The builder on the box** is `builder/` unchanged in what it builds: `createApp`, `buildApk`, the
 fast lane (a JavaScript-only change is a quick build in about 16 s with no Gradle, `docs/FAST-LANE.md`).
 One change: in the cloud **Gradle never sees the signing key**. With `ANYAPP_SIGN_LATER=1` the init
