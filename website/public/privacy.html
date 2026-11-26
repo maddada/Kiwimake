@@ -49,7 +49,7 @@
         <div class="draft-banner" role="note">
           <p>
             Draft for review, not legal advice. Highlighted parts like
-            <mark class="ph">[SELLER NAME]</mark> are still to be filled in, and
+            <mark class="ph">[PRIVACY EMAIL]</mark> are still to be filled in, and
             every “For review” note needs your answer or a lawyer’s eye before
             this page goes live.
           </p>
@@ -83,8 +83,9 @@
             Your app’s code is kept on your own GitHub, not by us.
           </li>
           <li>
-            Your messages and code go to the company whose AI runs the agent
-            (Anthropic today) so it can do the work.
+            Your messages and code go to the AI services that run the agent
+            (DeepSeek’s models through OpenRouter, or Claude on the Own key
+            plan) so it can do the work.
           </li>
           <li>
             We don’t sell your data, show you ads, or use trackers on this
@@ -98,9 +99,8 @@
 
         <h2 id="who">2. Who is responsible</h2>
         <p>
-          <mark class="ph">[SELLER NAME]</mark>,
-          <mark class="ph">[SELLER ADDRESS]</mark>,
-          <mark class="ph">[COUNTRY]</mark> (“we”) is responsible for your
+          SALEEM HADAD Web-Design, a sole establishment in Nad Al Hammar,
+          Dubai, United Arab Emirates (“we”), is responsible for your
           personal data in Kiwimake Cloud and on kiwimake.ai. Questions and
           requests: <mark class="ph">[PRIVACY EMAIL]</mark>.
         </p>
@@ -108,7 +108,8 @@
           >If you sell to people in the EU or UK without an office there, you may
           need an EU and a UK representative (GDPR Article 27), named here.
           Decide whether a data protection officer is needed (usually not at
-          this size).</span
+          this size). As a UAE business, also check the UAE Personal Data
+          Protection Law (Federal Decree-Law 45 of 2021).</span
         >
 
         <h2 id="collect">3. What we collect</h2>
@@ -255,23 +256,43 @@
             </thead>
             <tbody>
               <tr>
-                <td>Anthropic<br /><small>United States</small></td>
-                <td>The AI model (Claude) that runs Kiwimake’s agent.</td>
+                <td>OpenRouter<br /><small>United States</small></td>
+                <td>
+                  Passes the agent’s requests to the AI model and its answers
+                  back. Our main route to the AI.
+                </td>
                 <td>
                   Your chat messages and pictures, the agent’s instructions, and
-                  the parts of your app’s code the agent reads or writes. On the
-                  Own key plan this goes through your own Anthropic account.
+                  the parts of your app’s code the agent reads or writes. It
+                  sends them on to a company that runs the model (a “host”),
+                  which gets the same.
                 </td>
+              </tr>
+              <tr>
+                <td>TheRouter<br /><small><mark class="ph">[CHECK: location]</mark></small></td>
+                <td>
+                  The same job as OpenRouter, used only when OpenRouter is down
+                  or refuses a request.
+                </td>
+                <td>The same as OpenRouter, for those requests.</td>
               </tr>
               <tr>
                 <td>DeepSeek<br /><small><mark class="ph">[CHECK: China]</mark></small></td>
                 <td>
-                  Only if we switch the agent to DeepSeek’s models (we haven’t
-                  yet; we will update this page and tell you in the app first).
+                  Makes the AI models the agent runs on (DeepSeek V4 Pro, and
+                  V4.1 Flash for simple work).
                 </td>
                 <td>
-                  The same as Anthropic: your messages, pictures and the code the
-                  agent works on. Never on the Own key plan.
+                  When the request is run on DeepSeek’s own service: the same as
+                  OpenRouter. Other hosts may run DeepSeek’s models instead.
+                </td>
+              </tr>
+              <tr>
+                <td>Anthropic<br /><small>United States</small></td>
+                <td>Only on the Own key plan: the AI model (Claude).</td>
+                <td>
+                  The same as OpenRouter, through your own Anthropic account and
+                  under your agreement with Anthropic.
                 </td>
               </tr>
               <tr>
@@ -352,36 +373,39 @@
         </p>
         <span class="review"
           >Sign a data processing agreement with each company (most offer one in
-          their dashboard: Anthropic, Convex, Stripe, Resend, Cloudflare,
-          Instabox). Check Instabox’s and DeepSeek’s locations and
-          sub-processors before launch. Google Cloud KMS is planned, not in use
+          their dashboard: OpenRouter, TheRouter, Convex, Stripe, Resend,
+          Cloudflare, Instabox). Check Instabox’s, TheRouter’s and DeepSeek’s
+          locations and sub-processors before launch. Google Cloud KMS is planned, not in use
           yet: remove its row if you launch without it.</span
         >
 
         <h2 id="ai">6. The AI and your data</h2>
         <ul>
           <li>
-            Kiwimake’s AI agent runs on Claude, made by Anthropic, through
-            Anthropic’s paid business service. Under Anthropic’s commercial
-            terms, it does not use this data to train its models.
-            <span class="review"
-              >Check Anthropic’s current commercial terms and data retention for
-              API use before launch, and quote them exactly.</span
-            >
-          </li>
-          <li>
-            <mark class="ph">[ENGINE: if DeepSeek is switched on]</mark> If we run
-            the agent on DeepSeek, your messages, pictures and the code the agent
-            works on are sent to DeepSeek, which processes and stores data in
-            <mark class="ph">[CHECK: the People’s Republic of China]</mark>.
-            DeepSeek’s own terms decide how long it keeps that data and whether
-            it may use it to improve its models. We will tell you in the app
-            before we switch, and the Own key plan always stays on Claude.
+            Kiwimake’s AI agent runs on DeepSeek’s models. We reach them through
+            OpenRouter, and through TheRouter when OpenRouter is down or refuses
+            a request. The router passes each request to a host that runs the
+            model: DeepSeek’s own service, which processes and stores data in
+            <mark class="ph">[CHECK: the People’s Republic of China]</mark>, or
+            another host. Each host’s own terms decide how long it keeps the data
+            and whether it may use it to improve its models.
             <span class="review"
               >Sending EU, UK or US-state residents’ data to China needs its own
               transfer basis and a clear notice (and may need consent). Read
               DeepSeek’s platform terms and privacy policy on training and
-              storage location before switching.</span
+              storage location. OpenRouter lets you exclude hosts that train on
+              or keep prompts, and pick hosts by country: decide those settings
+              and describe them here. Check TheRouter’s data policy too.</span
+            >
+          </li>
+          <li>
+            On the Own key plan, the agent runs on Claude, made by Anthropic,
+            with your own Anthropic key, under your agreement with Anthropic.
+            Under Anthropic’s commercial terms it does not use this data to train
+            its models.
+            <span class="review"
+              >Check Anthropic’s current commercial terms and data retention for
+              API use before launch, and quote them exactly.</span
             >
           </li>
           <li>
@@ -392,9 +416,10 @@
 
         <h2 id="where">7. Where it is stored</h2>
         <p>
-          Mostly in the United States (Convex in US East, Instabox, Anthropic,
-          Stripe, Resend, GitHub). If you live elsewhere, your data is sent to
-          the US. Where the law requires it, we rely on the
+          Mostly in the United States (Convex in US East, Instabox, OpenRouter,
+          Stripe, Resend, GitHub). The AI requests may also be run by a host in
+          another country, including China (section 6). If you live elsewhere,
+          your data is sent to those countries. Where the law requires it, we rely on the
           EU Standard Contractual Clauses (with the UK addendum), and the EU-US Data Privacy Framework where a US company is certified under it,
           for those transfers.
         </p>
