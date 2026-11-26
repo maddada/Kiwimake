@@ -32,7 +32,9 @@ dir=$code/runner-$version
 if [ ! -f "$dir/.ok" ]; then
   rm -rf "$dir"; mkdir -p "$dir"
   curl -fsSL --retry 5 --retry-all-errors "$bundle" -o "$base/runner.tgz"
-  tar -xzf "$base/runner.tgz" -C "$dir"
+  # -p: the archive's modes (group write on the template, so the runner can add its .gitignore lines
+  # to the files the builder copies as agent), not this shell's umask.
+  tar -xpzf "$base/runner.tgz" -C "$dir"
   rm -f "$base/runner.tgz"
   # The companion's dependencies: the image's copy when the lock file is the same, else installed.
   want=$(sha256sum "$dir/server/package-lock.json" | cut -d' ' -f1)

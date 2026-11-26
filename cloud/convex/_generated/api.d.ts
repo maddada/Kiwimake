@@ -10,6 +10,8 @@
 
 import type * as accounts from "../accounts.js";
 import type * as admin from "../admin.js";
+import type * as agent from "../agent.js";
+import type * as agentPrices from "../agentPrices.js";
 import type * as apps from "../apps.js";
 import type * as auth from "../auth.js";
 import type * as billing from "../billing.js";
@@ -49,6 +51,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   accounts: typeof accounts;
   admin: typeof admin;
+  agent: typeof agent;
+  agentPrices: typeof agentPrices;
   apps: typeof apps;
   auth: typeof auth;
   billing: typeof billing;

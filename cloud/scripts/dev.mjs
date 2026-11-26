@@ -53,7 +53,11 @@ export function packRunner() {
   const out = path.join(os.tmpdir(), `kiwi-runner-${process.pid}.tgz`);
   const parts = ['cloud/runner', 'server/src', 'server/package.json', 'server/package-lock.json', 'cloud/box/agent.sh', 'shared', 'builder', 'template', 'template-kotlin'].filter((p) => fs.existsSync(path.join(REPO, p)));
   const tarBin = process.platform === 'win32' ? path.join(process.env.SystemRoot ?? 'C:\\Windows', 'System32', 'tar.exe') : 'tar';
-  const r = spawnSync(tarBin, ['-czf', out, '--exclude=node_modules', '--exclude=.gradle', '--exclude=build', '--exclude=android/app/build', '--exclude=*.test.ts', '-C', REPO, ...parts], { encoding: 'utf8' });
+  // Packed on Linux or macOS, files keep their 644 mode, and the template the builder copies as
+  // `agent` would then be read only to the runner (the box's login user, in the kiwi group):
+  // `.gitignore` could not get Kiwimake's lines. Group write, as Windows' tar gives.
+  const modes = process.platform === 'win32' ? [] : ['--mode=ug+rwX'];
+  const r = spawnSync(tarBin, ['-czf', out, ...modes, '--exclude=node_modules', '--exclude=.gradle', '--exclude=build', '--exclude=android/app/build', '--exclude=*.test.ts', '-C', REPO, ...parts], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`tar failed: ${r.stderr}`);
   return out;
 }

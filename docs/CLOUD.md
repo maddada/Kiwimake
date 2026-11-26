@@ -779,6 +779,20 @@ Claude (the person's Anthropic key).
   - **Proven with stubs** (`server/test/opencode.test.ts`, real `opencode acp`): a turn on
     OpenRouter; a 402 "out of credit" moves the turn to TheRouter and the session stays there; a
     503 moves a simple helper to TheRouter's Flash in under a minute.
+  - **Proven live on the dev deployment** (27 Nov 2026, `anyapp-box-v2`, the keys only as host-locked
+    Instabox proxy Secrets): a new app from Convex to a real box to the companion on opencode, on
+    each provider in turn. Each time the orchestrator read its guides, wrote the plan, published the
+    plan page with Kiwimake's page tool and replied with the plan; usage was counted under the model
+    that ran (OpenRouter V4 Pro: 25k in, 136k cache reads, 3.5k out, $0.115 at our price, $0.063
+    billed by OpenRouter; TheRouter V4 Pro: 158k in, 5.8k out, no cache reads reported, $0.42 at our
+    price). Forced failure: `CLOUD_AGENT_MODEL` set to a model OpenRouter does not have; OpenRouter
+    refused it (`provider.invalid-request`) and the same session moved to TheRouter within a
+    second and finished the turn there. Found on the way: a key the provider refuses now moves the
+    turn too, and the runner bundle keeps group write (packed with `--mode=ug+rwX`, unpacked with
+    `tar -p`) so the runner can add its lines to the template's `.gitignore`.
+  - **TheRouter reports no cache reads**, so every turn is billed as full input there: at our
+    $2.50 per million it costs people about 3.5 times OpenRouter's for the same turn. Keep OpenRouter
+    first.
 
 **The builder on the box** is `builder/` unchanged in what it builds: `createApp`, `buildApk`, the
 fast lane (a JavaScript-only change is a quick build in about 16 s with no Gradle, `docs/FAST-LANE.md`).
