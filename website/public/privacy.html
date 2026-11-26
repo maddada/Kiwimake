@@ -44,16 +44,8 @@
           else sees it, and how to get it deleted.
         </p>
         <p class="updated">
-          Last updated <mark class="ph">[EFFECTIVE DATE]</mark>
+          Last updated 27 November 2026
         </p>
-        <div class="draft-banner" role="note">
-          <p>
-            Draft for review, not legal advice. Highlighted parts like
-            <mark class="ph">[EFFECTIVE DATE]</mark> are filled in at publishing, and
-            every “For review” note needs your answer or a lawyer’s eye before
-            this page goes live.
-          </p>
-        </div>
       </section>
       <article class="doc wrap">
         <ol class="toc">
@@ -104,13 +96,6 @@
           personal data in Kiwimake Cloud and on kiwimake.ai. Questions and
           requests: <a href="mailto:kiwimake.ai@gmail.com">kiwimake.ai@gmail.com</a>.
         </p>
-        <span class="review"
-          >If you sell to people in the EU or UK without an office there, you may
-          need an EU and a UK representative (GDPR Article 27), named here.
-          Decide whether a data protection officer is needed (usually not at
-          this size). As a UAE business, also check the UAE Personal Data
-          Protection Law (Federal Decree-Law 45 of 2021).</span
-        >
 
         <h2 id="collect">3. What we collect</h2>
         <div class="table-scroll">
@@ -234,11 +219,6 @@
           We don’t sell your personal data, share it for advertising, or use
           your chats or code to train AI models.
         </p>
-        <span class="review"
-          >The legal bases above (contract, legal duty, legitimate interest)
-          follow GDPR. For California (CCPA/CPRA) add the “categories” and “no
-          sale or sharing” statements in the form the law asks for.</span
-        >
 
         <h2 id="others">5. Who else sees it</h2>
         <p>
@@ -269,15 +249,19 @@
                 </td>
               </tr>
               <tr>
-                <td>TheRouter<br /><small><mark class="ph">[CHECK: location]</mark></small></td>
+                <td>TheRouter<br /><small>United States</small></td>
                 <td>
                   The same job as OpenRouter, used only when OpenRouter is down
                   or refuses a request.
                 </td>
-                <td>The same as OpenRouter, for those requests.</td>
+                <td>
+                  The same as OpenRouter, for those requests. It keeps only
+                  request details (model, timings, token counts), not the
+                  messages themselves.
+                </td>
               </tr>
               <tr>
-                <td>DeepSeek<br /><small><mark class="ph">[CHECK: China]</mark></small></td>
+                <td>DeepSeek<br /><small>China</small></td>
                 <td>
                   Makes the AI models the agent runs on (DeepSeek V4 Pro, and
                   V4.1 Flash for simple work).
@@ -358,11 +342,6 @@
                   short-lived logs. No cookies, no analytics.
                 </td>
               </tr>
-              <tr>
-                <td>Google Cloud<br /><small>United States</small></td>
-                <td>Keeps the master key that locks the signing keys.</td>
-                <td>No personal data: only requests to lock and unlock keys.</td>
-              </tr>
             </tbody>
           </table>
         </div>
@@ -371,13 +350,6 @@
           harm, or as part of selling or merging the business (you would be told,
           and this policy would still apply to your data).
         </p>
-        <span class="review"
-          >Sign a data processing agreement with each company (most offer one in
-          their dashboard: OpenRouter, TheRouter, Convex, Stripe, Resend,
-          Cloudflare, Instabox). Check Instabox’s, TheRouter’s and DeepSeek’s
-          locations and sub-processors before launch. Google Cloud KMS is planned, not in use
-          yet: remove its row if you launch without it.</span
-        >
 
         <h2 id="ai">6. The AI and your data</h2>
         <ul>
@@ -385,28 +357,24 @@
             Kiwimake’s AI agent runs on DeepSeek’s models. We reach them through
             OpenRouter, and through TheRouter when OpenRouter is down or refuses
             a request. The router passes each request to a host that runs the
-            model: DeepSeek’s own service, which processes and stores data in
-            <mark class="ph">[CHECK: the People’s Republic of China]</mark>, or
-            another host. Each host’s own terms decide how long it keeps the data
-            and whether it may use it to improve its models.
-            <span class="review"
-              >Sending EU, UK or US-state residents’ data to China needs its own
-              transfer basis and a clear notice (and may need consent). Read
-              DeepSeek’s platform terms and privacy policy on training and
-              storage location. OpenRouter lets you exclude hosts that train on
-              or keep prompts, and pick hosts by country: decide those settings
-              and describe them here. Check TheRouter’s data policy too.</span
-            >
+            model: DeepSeek’s own service or another host. Each host’s own terms
+            decide how long it keeps the data and whether it may use it to
+            improve its models.
+          </li>
+          <li>
+            DeepSeek is run by Hangzhou DeepSeek Artificial Intelligence Co.,
+            Ltd. in China. Its privacy policy says it collects, processes and
+            stores personal data in the People’s Republic of China, that it may
+            use what it collects to train and improve its models, and that it
+            keeps input for as long as the account that sent it exists. When
+            DeepSeek’s own service runs a request, that is our account, not
+            yours.
           </li>
           <li>
             On the Own key plan, the agent runs on Claude, made by Anthropic,
             with your own Anthropic key, under your agreement with Anthropic.
             Under Anthropic’s commercial terms it does not use this data to train
             its models.
-            <span class="review"
-              >Check Anthropic’s current commercial terms and data retention for
-              API use before launch, and quote them exactly.</span
-            >
           </li>
           <li>
             Don’t put passwords, secrets or other people’s private data in a

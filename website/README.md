@@ -94,14 +94,14 @@ Provider references:
 [Custom Domains](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/)
 and [Porkbun nameserver propagation](https://kb.porkbun.com/article/35-how-long-will-it-take-to-switch-nameservers).
 
-## Pricing and legal pages (drafts, 26 November 2026)
+## Pricing and legal pages (published 27 November 2026)
 
 `/pricing`, `/terms`, `/privacy` and `/refunds` (`public/*.html`), linked from every footer and from
-the pricing page's sign-up section. They are **drafts for the owner and a lawyer**: highlighted
-`[PLACEHOLDERS]` (`class="ph"`), "For review" notes (`class="review"`) and a "Draft for review"
-banner on each page. Before deploying, fill or remove them all, so that
-`grep -n 'class="ph"\|class="review"\|draft-banner' public/*.html` prints nothing. Plans and prices
-come from `cloud/convex/config.ts`; change both together.
+the pricing page's sign-up section. Approved by the owner; the sources behind them and the notes for
+a lawyer are kept outside the repository (`~/kiwimake-work/legal/REVIEW.md`). Plans and prices come
+from `cloud/convex/config.ts`, the retention windows from its `PRIVACY`: change the pages with them.
+Changing what the terms or the privacy policy say also means a new "Last updated" date. The styles
+`.ph` (a highlighted blank) and `.review` (a note) are for drafts; published pages use neither.
 
 Preview locally (the Worker redirects plain HTTP, so serve HTTPS):
 `npx --yes wrangler@4.161.0 dev --local-protocol https`.
