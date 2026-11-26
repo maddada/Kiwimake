@@ -143,6 +143,8 @@ if (endpoints.length) {
   console.log(`webhook endpoint already there: ${endpoints.map((e) => `${e.id} (${e.status})`).join(', ')}; its secret is not shown again, so it is kept only if Convex has it`);
   const names = dryRun ? '' : convex(['env', 'list']).split('\n').map((l) => l.split('=')[0]);
   if (!dryRun && !names.includes('STRIPE_WEBHOOK_SECRET')) throw new Error('an endpoint exists but Convex has no STRIPE_WEBHOOK_SECRET: delete that endpoint in the dashboard and run again');
+  // Kept: make sure it is tagged and listens to exactly the events Kiwimake reads.
+  for (const e of endpoints) await stripe('POST', `/webhook_endpoints/${e.id}`, { enabled_events: EVENTS, metadata: TAG, description: `Kiwimake Cloud (${deployment}): credits and plans` });
 } else {
   const e = await stripe('POST', '/webhook_endpoints', { url: WEBHOOK_URL, description: `Kiwimake Cloud (${deployment}): credits and plans`, enabled_events: EVENTS, metadata: TAG });
   webhookSecret = e.secret ?? '';
