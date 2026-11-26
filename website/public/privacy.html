@@ -91,7 +91,8 @@
             website.
           </li>
           <li>
-            You can ask for a copy of your data or have it deleted any time.
+            You can download your data or delete your account in the app, any
+            time.
           </li>
         </ul>
 
@@ -402,24 +403,14 @@
         <ul>
           <li>
             <strong>Account, apps and chats</strong>: while your account exists.
-            When you delete an app, its machine is deleted at once, and its chat
-            and build files are deleted within
-            <mark class="ph">[DAYS]</mark> days.
-            <span class="review"
-              >Today deleting a cloud app only hides it (cloud/convex/apps.ts,
-              remove: it sets deletedAt and retires the machine); its chat, files
-              and key stay. Either build a clean-up job or change this
-              sentence.</span
-            >
+            When you delete an app, its machine is deleted at once, and for 10
+            minutes you can undo it. After that its chat, pictures, pages and
+            build files are deleted for good.
           </li>
           <li>
-            <strong>Build files</strong>: the files of each app’s recent
-            versions. Older versions can be built again from your code.
-            <span class="review"
-              >The cloud does not delete old build files yet (docs/CLOUD.md,
-              section 3, “Egress”). Pick a rule, for example the last 3 builds,
-              and build it before launch, or describe what really happens.</span
-            >
+            <strong>Build files</strong>: the files of each app’s 3 newest
+            versions. Older ones are deleted; they can be built again from your
+            code.
           </li>
           <li>
             <strong>Cloud machines</strong>: a machine is paused 5 minutes after
@@ -430,20 +421,22 @@
             <strong>Sign-in codes</strong>: 10 minutes.
           </li>
           <li>
-            <strong>Payment and tax records</strong>: as long as the law asks
-            (<mark class="ph">[RECORD YEARS]</mark> years in
-            <mark class="ph">[COUNTRY]</mark>), even after you delete your account.
+            <strong>Downloads you ask for</strong> (your data, your signing
+            keys): the link works for 30 minutes, then the file is deleted.
           </li>
           <li>
-            <strong>Signing keys</strong>: while your account exists. When you
-            delete your account we
-            <mark class="ph">[DECIDE: send you your apps’ signing keys first, then delete them / keep them for N days in case you come back]</mark>.
-            Without its key, an app on your phone can’t get new versions.
-            <span class="review"
-              >The cloud is built never to delete signing keys (docs/CLOUD.md
-              section 6). That conflicts with deleting an account on request:
-              decide the rule, and build an export.</span
-            >
+            <strong>Payment records</strong>: Stripe keeps them as tax law
+            requires, even after you delete your account. We keep no copy of our
+            own once your account is deleted.
+          </li>
+          <li>
+            <strong>Signing keys</strong>: while the app or your account exists.
+            Save them first (Account, Save signing keys) if you want to keep
+            updating your apps later, from Kiwimake on a computer. When you
+            delete an app or your account, its keys stay locked away for 30 more
+            days (write to us if you change your mind), then they are deleted
+            for good. Without its key, an app on your phone can’t get new
+            versions.
           </li>
           <li>
             <strong>Backups</strong>: deleted data may stay in our database
@@ -455,21 +448,22 @@
         <h2 id="rights">9. Your choices and rights</h2>
         <ul>
           <li>
-            <strong>In the app</strong>: delete an app, remove your Own key,
-            disconnect GitHub (or remove the Kiwimake App on GitHub), unlink a
-            computer.
+            <strong>In the app</strong>: delete an app (and undo it within 10
+            minutes), remove your Own key, disconnect GitHub (or remove the
+            Kiwimake App on GitHub), unlink a computer.
+          </li>
+          <li>
+            <strong>Your data</strong>, in the app under Account:
+            <em>Download my data</em> gives you a copy of everything we hold
+            about you in one file, <em>Save signing keys</em> saves your apps’
+            keys, and <em>Delete my account</em> cancels your plan and deletes
+            your account and all its data at once, except the signing keys,
+            which follow 30 days later.
           </li>
           <li>
             <strong>By email</strong> to <mark class="ph">[PRIVACY EMAIL]</mark>,
-            from the address on your account: a copy of your data, a correction,
-            or deleting your whole account. We answer within
-            <mark class="ph">[30]</mark> days.
-            <span class="review"
-              >There is no “Delete my account” or “Download my data” button in
-              the phone app yet. Email works legally, but a button in the app
-              is what people expect, and app stores require one if Kiwimake is
-              ever listed there.</span
-            >
+            from the address on your account, for anything else, such as a
+            correction. We answer within one month.
           </li>
           <li>
             Depending on where you live (for example the EU, UK or California),

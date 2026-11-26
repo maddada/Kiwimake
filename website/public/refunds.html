@@ -64,23 +64,22 @@
             get its credits back.
           </li>
           <li>
-            Credits you used are not refunded as money, but charges made by
-            mistake always are.
+            Changed your mind about a new plan? Full refund within 14 days if
+            you used none of its credits.
+          </li>
+          <li>
+            Charges made by mistake are always refunded.
           </li>
         </ul>
 
         <h2>Cancelling a plan</h2>
         <ul>
           <li>
-            Cancel in the Kiwimake app (<mark class="ph">[CANCEL PATH, for example Settings, Your plan, Cancel plan]</mark>)
-            or by writing to <mark class="ph">[CONTACT EMAIL]</mark> from the
-            address on your account.
-            <span class="review"
-              >The phone app has no cancel button yet (app/src/app/plan.tsx), and
-              there is no Stripe customer portal link. Many places (the EU, the
-              UK, California and the US FTC) expect cancelling to be as easy as
-              signing up, so add one of the two before launch.</span
-            >
+            Cancel in the Kiwimake app: Account, Your plan, Manage plan. That
+            opens Stripe’s page for your plan, where cancelling takes two taps
+            (you can also change your card and see receipts there). You can also
+            write to <mark class="ph">[CONTACT EMAIL]</mark> from the address on
+            your account.
           </li>
           <li>
             A cancel takes effect at the end of the month you paid for, or the
@@ -90,6 +89,11 @@
           <li>
             Credits you already have stay until they expire. After that, you are
             on Free, with 3 free credits a month.
+          </li>
+          <li>
+            Deleting your account (Account, Delete my account) cancels your plan
+            at once, along with everything else. If you want a refund under the
+            14-day rule below, ask before you delete it.
           </li>
           <li>
             Moving to a smaller plan works the same way: it starts when the
@@ -105,23 +109,26 @@
             within <mark class="ph">[90]</mark> days.
           </li>
           <li>
-            <strong>Plans and extra credit</strong>: credits are not refunded as
-            money once they are used.
-            <mark class="ph">[DECIDE: “If you change your mind within 14 days of buying and have used none of the credits it gave you, write to us for a full refund.”]</mark>
+            <strong>New plans, 14 days</strong>: if you change your mind within
+            14 days of starting a new subscription and have used none of the
+            credits it gave you, write to us and we refund it in full.
+          </li>
+          <li>
+            <strong>After that, and for extra credit</strong>: credits are not
+            refunded as money.
             <span class="review"
               >Consumers in the EU and UK have a 14-day right to withdraw from
-              online purchases of services and digital content. You can only
-              take it away if, at checkout, they agree to start at once and
-              confirm they lose the right (Stripe Checkout needs a consent tick
-              box for that), and even then a subscription cancelled within 14
-              days may be owed a pro rata refund. The 14-day option above is the
-              simple way to stay on the safe side.</span
+              online purchases of digital content, extra credit packs included.
+              It can only be taken away if, at checkout, they agree to start at
+              once and confirm they lose the right (Stripe Checkout needs a
+              consent tick box for that). Check whether extra credit should get
+              the same 14-day rule as plans.</span
             >
           </li>
           <li>
-            <strong>Yearly plans</strong>: a cancel stops the renewal; the year
-            you paid for is not refunded part way through.
-            <mark class="ph">[DECIDE: or refund unused whole months]</mark>
+            <strong>Yearly plans</strong>: a cancel stops the renewal, and the
+            plan keeps working until the year ends. Unused months are not
+            refunded. The 14-day rule above still applies to a new yearly plan.
           </li>
           <li>
             <strong>If we close the cloud service</strong>, or close your account
