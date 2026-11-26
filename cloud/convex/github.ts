@@ -11,7 +11,7 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import { httpAction, internalAction, internalMutation, internalQuery, mutation, type ActionCtx } from './_generated/server';
+import { httpAction, internalAction, internalMutation, internalQuery, mutation, type ActionCtx, type MutationCtx } from './_generated/server';
 import { b64, openSecret, randomToken, sealSecret, unb64 } from './lib/crypto';
 import { requireUser } from './lib/session';
 
@@ -43,19 +43,34 @@ async function gh(method: string, path: string, token: string, body?: unknown) {
 
 // ---------- connecting
 
-/** A link for the browser: install the App (first time) or authorize it again. */
+const installUrl = (state: string) => `https://github.com/apps/${process.env.GITHUB_APP_SLUG ?? ''}/installations/new?state=${encodeURIComponent(state)}`;
+const authorizeUrl = (state: string) => `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(process.env.GITHUB_APP_CLIENT_ID ?? '')}&state=${encodeURIComponent(state)}`;
+
+async function newState(ctx: MutationCtx, userId: Id<'users'>): Promise<string> {
+  const state = randomToken(24);
+  await ctx.db.insert('githubStates', { state, userId, createdAt: Date.now() });
+  return state;
+}
+
+/**
+ * A link for the browser. Always GitHub's authorize page first: when the App is installed on the
+ * person's GitHub already (a second Kiwimake account, or signing up again after deleting one) that
+ * is all it takes, while GitHub's install page would only show "Configure" and never come back.
+ * When there is no installation yet, the callback sends the person on to the install page.
+ */
 export const connectUrl = mutation({
   args: {},
   handler: async (ctx) => {
     const user = await requireUser(ctx);
-    const state = randomToken(24);
-    await ctx.db.insert('githubStates', { state, userId: user._id, createdAt: Date.now() });
-    const slug = process.env.GITHUB_APP_SLUG ?? '';
-    const clientId = process.env.GITHUB_APP_CLIENT_ID ?? '';
-    const install = `https://github.com/apps/${slug}/installations/new?state=${encodeURIComponent(state)}`;
-    const authorize = `https://github.com/login/oauth/authorize?client_id=${encodeURIComponent(clientId)}&state=${encodeURIComponent(state)}`;
-    return { url: user.githubInstallationId ? authorize : install, install, authorize };
+    const state = await newState(ctx, user._id);
+    return { url: authorizeUrl(state), install: installUrl(state), authorize: authorizeUrl(state) };
   },
+});
+
+/** A fresh state for the install page, after an authorize that found no installation. */
+export const stateFor = internalMutation({
+  args: { userId: v.id('users') },
+  handler: async (ctx, { userId }) => newState(ctx, userId),
 });
 
 export const takeState = internalMutation({
@@ -97,12 +112,17 @@ export const callback = httpAction(async (ctx, req) => {
   const t = await res.json();
   if (!t.access_token) return page('GitHub did not connect', `GitHub said: ${String(t.error_description ?? t.error ?? res.status).slice(0, 200)}`, false);
   const done = await saveFromToken(ctx, userId, t, url.searchParams.get('installation_id') ?? undefined);
+  if (!done.ok && done.notInstalled) {
+    // Authorized, but Kiwimake is not on their GitHub yet: on to the install page, which comes back here.
+    const fresh = await ctx.runMutation(internal.github.stateFor, { userId });
+    return new Response(null, { status: 302, headers: { Location: installUrl(fresh) } });
+  }
   if (!done.ok) return page('GitHub did not connect', done.why, false);
   return page('GitHub is connected', `Your apps' code goes to your GitHub account ${done.login}, in private repositories you own.`, true);
 });
 
 /** Stores a fresh token response for the person and records their GitHub account and install. */
-async function saveFromToken(ctx: ActionCtx, userId: Id<'users'>, t: any, installationId?: string): Promise<{ ok: true; login: string } | { ok: false; why: string }> {
+async function saveFromToken(ctx: ActionCtx, userId: Id<'users'>, t: any, installationId?: string): Promise<{ ok: true; login: string } | { ok: false; why: string; notInstalled?: boolean }> {
   const me = await gh('GET', '/user', t.access_token);
   const login = String(me.json?.login ?? '');
   const githubUserId = Number(me.json?.id ?? 0);
@@ -113,7 +133,7 @@ async function saveFromToken(ctx: ActionCtx, userId: Id<'users'>, t: any, instal
     const mine = (list.json?.installations ?? []).find((i: any) => String(i.app_id) === String(process.env.GITHUB_APP_ID) || i.app_slug === process.env.GITHUB_APP_SLUG);
     if (mine) inst = String(mine.id);
   }
-  if (!inst) return { ok: false, why: 'Kiwimake is not installed on your GitHub account yet. Go back and tap Connect GitHub again to install it.' };
+  if (!inst) return { ok: false, why: 'Kiwimake is not installed on your GitHub account yet. Go back and tap Connect GitHub again to install it.', notInstalled: true };
   await ctx.runMutation(internal.github.saveToken, {
     userId,
     login,

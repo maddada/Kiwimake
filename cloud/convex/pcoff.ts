@@ -15,7 +15,7 @@ import { freeSlug, imageArg, pendingUserItem, requireGithub, slugify } from './a
 import { joinOrOpenChange } from './billing';
 import { estimateFor } from './estimates';
 import { onCloudChange } from './lib/credits';
-import { requireUser } from './lib/session';
+import { requireUser, Refused } from './lib/session';
 import type { ChatItem } from '../../shared/protocol';
 
 const PACKAGE_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
@@ -47,12 +47,12 @@ export const ready = internalMutation({
     buildHigh: v.number(),
   },
   handler: async (ctx, a) => {
-    if (!PACKAGE_RE.test(a.packageName)) throw new Error('That app has no valid package name.');
+    if (!PACKAGE_RE.test(a.packageName)) throw new Refused('That app has no valid package name.');
     const user = (await ctx.db.get(a.userId))!;
     if (!user.pcOffSwitch) return { off: true as const };
     requireGithub(user);
     const others = (await ctx.db.query('apps').withIndex('by_package', (q) => q.eq('packageName', a.packageName)).collect()).filter((r) => !r.deletedAt && r.userId !== a.userId);
-    if (others.length) throw new Error('Another account has an app with this package name.');
+    if (others.length) throw new Refused('Another account has an app with this package name.');
     let app = await rowFor(ctx, a.userId, a.packageName);
     if (app?.place === 'cloud') return { off: false as const, inCloud: true as const, appId: app._id };
     if (app) {
@@ -88,7 +88,7 @@ export const rowOfPcApp = internalQuery({
   handler: async (ctx, { userId, appId }) => {
     const id = ctx.db.normalizeId('apps', appId);
     const app = id ? await ctx.db.get(id) : null;
-    if (!app || app.userId !== userId || app.deletedAt || app.place !== 'pc') throw new Error('That app is not kept ready here.');
+    if (!app || app.userId !== userId || app.deletedAt || app.place !== 'pc') throw new Refused('That app is not kept ready here.');
     return app;
   },
 });
@@ -137,14 +137,14 @@ export const devChange = internalMutation({
 });
 
 async function startChange(ctx: MutationCtx, user: Doc<'users'>, packageName: string, text: string, images?: { fileId: Id<'_storage'>; mimeType: string; width?: number; height?: number }[]) {
-  if (!user.pcOffSwitch) throw new Error('Turn on "Use the cloud when my PC is off" in your account first.');
+  if (!user.pcOffSwitch) throw new Refused('Turn on "Use the cloud when my PC is off" in your account first.');
   requireGithub(user);
   const app = await rowFor(ctx, user._id, packageName);
-  if (!app || app.place !== 'pc' || !app.keptReady || !app.pushedCommit) throw new Error('This app is not ready in the cloud yet. It is, once your PC has made a version with the switch on.');
+  if (!app || app.place !== 'pc' || !app.keptReady || !app.pushedCommit) throw new Refused('This app is not ready in the cloud yet. It is, once your PC has made a version with the switch on.');
   const moving = await ctx.db.query('moves').withIndex('by_app', (q) => q.eq('appId', app._id)).filter((q) => q.eq(q.field('state'), 'running')).first();
-  if (moving) throw new Error('This app is moving. Try again when it is done.');
+  if (moving) throw new Refused('This app is moving. Try again when it is done.');
   const body = text.trim().slice(0, 8000);
-  if (!body && !images?.length) throw new Error('Write a message first.');
+  if (!body && !images?.length) throw new Refused('Write a message first.');
   const threadId = await threadFor(ctx, app);
   await onCloudChange(ctx, user);
   const changeId = await joinOrOpenChange(ctx, user, app, threadId);

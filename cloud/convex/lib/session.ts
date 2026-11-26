@@ -2,8 +2,9 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import type { Doc, Id } from '../_generated/dataModel';
 import type { QueryCtx } from '../_generated/server';
+import { Refused } from './refused';
 
-export class Refused extends Error {}
+export { Refused };
 
 export async function requireUser(ctx: QueryCtx): Promise<Doc<'users'>> {
   const userId = await getAuthUserId(ctx);

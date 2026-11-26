@@ -68,7 +68,9 @@ loses its answer, so the inbox offers work with a lease and the runner acknowled
 | `spike/send.mjs` | A command-line stand-in for the phone: signs in without an account, sends a prompt, prints the chat. |
 
 The phone side of the spike was `app/src/app/cloud-spike.tsx`; milestone 4 replaced it with the real
-cloud mode (`app/src/lib/cloud.ts`, built with `EXPO_PUBLIC_CONVEX_URL`).
+cloud mode (`app/src/lib/cloud.ts`). Which cloud a phone build uses is chosen in
+`app/app.config.js`: release builds always use production (`utmost-deer-505`); other builds have no
+cloud unless `KIWIMAKE_CLOUD=dev` (or `prod`) or `EXPO_PUBLIC_CONVEX_URL` is set.
 
 ## How to run it again
 

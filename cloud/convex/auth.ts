@@ -7,6 +7,7 @@ import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { sha256Hex } from './lib/crypto';
 import { convexAuth } from '@convex-dev/auth/server';
+import { Refused } from './lib/refused';
 
 /** The phone app's deep link scheme (app/app.json "scheme"); sign-in returns there. */
 const APP_SCHEMES = ['anyappagent://'];
@@ -56,7 +57,7 @@ const ResendOTP = Resend({
       // Never log the code. Resend's answer (for example an address it may not send to yet) goes to
       // the server log; the person gets a plain sentence.
       console.error(`Resend refused the sign-in email (${res.status}): ${(await res.text()).slice(0, 300)}`);
-      throw new Error('We could not send a code to that address. Check it, or continue with Google.');
+      throw new Refused('We could not send a code to that address. Check it, or continue with Google.');
     }
   },
 });

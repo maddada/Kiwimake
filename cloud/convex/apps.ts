@@ -8,7 +8,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/s
 import { CLOUD_PACKAGE_PREFIX, PRIVACY } from './config';
 import { onCloudChange } from './lib/credits';
 import { openChange } from './billing';
-import { ownApp, requireUser } from './lib/session';
+import { ownApp, requireUser, Refused } from './lib/session';
 
 const JAVA_KEYWORDS = new Set(
   'abstract assert boolean break byte case catch char class const continue default do double else enum extends final finally float for goto if implements import instanceof int interface long native new package private protected public return short static strictfp super switch synchronized this throw throws transient try void volatile while true false null var record yield'.split(' '),
@@ -133,8 +133,8 @@ export async function pendingUserItem(ctx: MutationCtx, threadId: Id<'threads'>,
 
 /** Cloud changes need GitHub: the code lives only there (docs/CLOUD.md, "Disconnecting GitHub"). */
 export function requireGithub(user: Doc<'users'>) {
-  if (!user.githubInstallationId) throw new Error('Connect GitHub first: your apps’ code is kept on your own GitHub.');
-  if (user.githubDisconnectedAt) throw new Error('GitHub is disconnected. Connect it again to keep changing your apps; they are all still there.');
+  if (!user.githubInstallationId) throw new Refused('Connect GitHub first: your apps’ code is kept on your own GitHub.');
+  if (user.githubDisconnectedAt) throw new Refused('GitHub is disconnected. Connect it again to keep changing your apps; they are all still there.');
 }
 
 export const imageArg = v.object({ fileId: v.id('_storage'), mimeType: v.string(), width: v.optional(v.number()), height: v.optional(v.number()) });
@@ -151,8 +151,8 @@ export const create = mutation({
     const user = await requireUser(ctx);
     const name = args.name.trim().slice(0, 40);
     const prompt = args.prompt.trim().slice(0, 8000);
-    if (!name) throw new Error('Give the app a name.');
-    if (!prompt && !args.images?.length) throw new Error('Say what the app should do.');
+    if (!name) throw new Refused('Give the app a name.');
+    if (!prompt && !args.images?.length) throw new Refused('Say what the app should do.');
     requireGithub(user);
     await onCloudChange(ctx, user);
     const slug = await freeSlug(ctx, user._id, slugify(name));
@@ -219,7 +219,7 @@ export const restore = mutation({
     const user = await requireUser(ctx);
     const id = ctx.db.normalizeId('apps', appId);
     const app = id ? await ctx.db.get(id) : null;
-    if (!app || app.userId !== user._id || !app.deletedAt || !app.purgeAt || app.purgeAt <= Date.now()) throw new Error('That app is deleted for good now.');
+    if (!app || app.userId !== user._id || !app.deletedAt || !app.purgeAt || app.purgeAt <= Date.now()) throw new Refused('That app is deleted for good now.');
     await ctx.db.patch(app._id, { deletedAt: undefined, purgeAt: undefined, updatedAt: Date.now() });
     return toApp(ctx, (await ctx.db.get(app._id))!);
   },

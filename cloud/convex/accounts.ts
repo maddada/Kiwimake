@@ -6,7 +6,7 @@ import { mutation, query } from './_generated/server';
 import { EXTRA_PACK, FREE_MONTHLY_MILLICREDITS, PLANS } from './config';
 import { randomToken, sealSecret, sha256Hex } from './lib/crypto';
 import { balanceOf, subscriptionOf } from './lib/credits';
-import { requireUser } from './lib/session';
+import { requireUser, Refused } from './lib/session';
 import { ALL_SCOPES, revokeTwins } from './pclinks';
 
 export const me = query({
@@ -77,7 +77,7 @@ export const revokePcLink = mutation({
   handler: async (ctx, { id }) => {
     const user = await requireUser(ctx);
     const link = await ctx.db.get(id);
-    if (!link || link.userId !== user._id) throw new Error('That PC is not linked.');
+    if (!link || link.userId !== user._id) throw new Refused('That PC is not linked.');
     await ctx.db.patch(id, { revokedAt: Date.now() });
   },
 });
@@ -117,7 +117,7 @@ export const setOwnKey = mutation({
   handler: async (ctx, { key }) => {
     const user = await requireUser(ctx);
     const k = key.trim();
-    if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(k)) throw new Error('That does not look like an Anthropic API key. It starts with sk-ant-.');
+    if (!/^sk-ant-[A-Za-z0-9_-]{20,}$/.test(k)) throw new Refused('That does not look like an Anthropic API key. It starts with sk-ant-.');
     const box = await sealSecret(k, `anthropic:${user._id}`);
     const old = await ctx.db.query('secrets').withIndex('by_user_kind', (q) => q.eq('userId', user._id).eq('kind', 'anthropic')).first();
     const row = { userId: user._id, kind: 'anthropic' as const, ...box, last4: k.slice(-4) };

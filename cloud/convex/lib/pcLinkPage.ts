@@ -63,6 +63,7 @@ const CODE = (params.get('l') || ${JSON.stringify(cfg.code)}).toUpperCase();
 const $ = (id) => document.getElementById(id);
 const show = (id, on) => { const e = $(id); if (e) e.hidden = !on; };
 function problem(text) { $('problem').textContent = text; show('problem', !!text); }
+const GENERIC = 'Something went wrong. Try again.';
 async function call(kind, path, args, token) {
   const res = await fetch(CLOUD + '/api/' + kind, {
     method: 'POST',
@@ -70,7 +71,8 @@ async function call(kind, path, args, token) {
     body: JSON.stringify({ path, args, format: 'json' }),
   });
   const body = await res.json().catch(() => ({}));
-  if (body.status !== 'success') throw new Error(body.errorMessage || 'Something went wrong. Try again.');
+  // A refusal for people comes as errorData; production hides any other message ("Server Error").
+  if (body.status !== 'success') throw new Error(typeof body.errorData === 'string' ? body.errorData : body.errorMessage && !/Server Error/.test(body.errorMessage) ? body.errorMessage : GENERIC);
   return body.value;
 }
 const clean = (m) => String(m).replace(/^.*Uncaught Error: /s, '').split('\\n')[0].replace(/ at .*$/, '');
@@ -123,7 +125,12 @@ on('emailGo', async () => {
     $('emailGo').textContent = 'Sign in';
     return;
   }
-  await signIn({ provider: 'resend-otp', params: { email, code: $('otpIn').value.trim() } });
+  try {
+    await signIn({ provider: 'resend-otp', params: { email, code: $('otpIn').value.trim() } });
+  } catch (e) {
+    // A wrong or old code: Convex Auth's own error, which production hides.
+    throw new Error(e.message === GENERIC || /verify code/i.test(e.message) ? 'That code did not work. Check it, or send a new one.' : e.message);
+  }
 });
 start();
 </script></main></body></html>`;

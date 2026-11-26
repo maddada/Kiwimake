@@ -15,21 +15,22 @@ import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { action, type ActionCtx } from './_generated/server';
 import { envelopeOpen } from './lib/crypto';
+import { Refused } from './lib/refused';
 
 type Link = { url: string; expiresAt: number; fileName: string; sizeBytes: number };
 
 async function signedIn(ctx: ActionCtx): Promise<Id<'users'>> {
   const userId = await getAuthUserId(ctx);
-  if (!userId) throw new Error('Sign in first.');
+  if (!userId) throw new Refused('Sign in first.');
   const user = await ctx.runQuery(internal.stripe.userRow, { userId });
-  if (!user || user.blocked || user.deletingAt) throw new Error('Sign in first.');
+  if (!user || user.blocked || user.deletingAt) throw new Refused('Sign in first.');
   return userId;
 }
 
 /** One a minute of each kind: making the data file reads everything the account has. */
 async function notTooSoon(ctx: ActionCtx, userId: Id<'users'>, kind: 'data' | 'keys') {
   const last = await ctx.runQuery(internal.privacy.lastDownload, { userId, kind });
-  if (last && Date.now() - last._creationTime < 60_000) throw new Error('Your file was made a moment ago. Try again in a minute.');
+  if (last && Date.now() - last._creationTime < 60_000) throw new Refused('Your file was made a moment ago. Try again in a minute.');
 }
 
 const day = () => new Date().toISOString().slice(0, 10);
@@ -99,7 +100,7 @@ export const myData = action({
     const userId = await signedIn(ctx);
     await notTooSoon(ctx, userId, 'data');
     const acc = await ctx.runQuery(internal.privacy.dataAccount, { userId });
-    if (!acc) throw new Error('Sign in first.');
+    if (!acc) throw new Refused('Sign in first.');
     const files: Zippable = { 'README.txt': strToU8(README(new Date().toISOString())), 'account.json': json({ ...acc, apps: acc.apps.map(({ iconFileId: _i, ...a }) => a) }) };
     const used = new Set<string>();
     for (const a of acc.apps) {
@@ -186,10 +187,10 @@ export const signingKeys = action({
   args: { password: v.string(), appIds: v.optional(v.array(v.string())) },
   handler: async (ctx, { password, appIds }): Promise<Link & { count: number }> => {
     const userId = await signedIn(ctx);
-    if (password.length < MIN_PASSWORD) throw new Error(`Pick a password of at least ${MIN_PASSWORD} characters.`);
+    if (password.length < MIN_PASSWORD) throw new Refused(`Pick a password of at least ${MIN_PASSWORD} characters.`);
     await notTooSoon(ctx, userId, 'keys');
     const keys = await ctx.runQuery(internal.privacy.keysFor, { userId, ...(appIds ? { appIds } : {}) });
-    if (!keys?.length) throw new Error('None of your apps has a signing key yet.');
+    if (!keys?.length) throw new Refused('None of your apps has a signing key yet.');
     const entries = [];
     for (const k of keys) {
       const plain = await envelopeOpen(k.envelope, k.aad);

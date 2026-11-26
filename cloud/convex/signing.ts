@@ -4,7 +4,7 @@
 // on a tmpfs as another Unix user than the agent's, and reports what it signed (the signing log).
 import { v } from 'convex/values';
 import { internalMutation, internalQuery, query } from './_generated/server';
-import { ownApp, requireUser } from './lib/session';
+import { ownApp, requireUser, Refused } from './lib/session';
 import { envelopeOpen, envelopeSeal, type Envelope } from './lib/crypto';
 import { importPrivate, openWith, sealTo, type Sealed } from './lib/transport';
 
@@ -38,7 +38,7 @@ export const storeKey = internalMutation({
     const have = await ctx.db.query('keys').withIndex('by_app', (q) => q.eq('appId', app._id)).first();
     if (have) {
       if (have.certSha256 === a.certSha256) return { certSha256: have.certSha256, stored: false };
-      throw new Error('This app already has a signing key; a key is never replaced.');
+      throw new Refused('This app already has a signing key; a key is never replaced.');
     }
     if (!/^[0-9a-f]{64}$/.test(a.certSha256)) throw new Error('bad certificate hash');
     const payload = new TextEncoder().encode(JSON.stringify({ p12: a.p12, storePassword: a.storePassword, keyAlias: a.keyAlias }));
@@ -63,12 +63,12 @@ export const storeMovedKey = internalMutation({
     const have = await ctx.db.query('keys').withIndex('by_app', (q) => q.eq('appId', app._id)).first();
     if (have) {
       if (have.certSha256 === certSha256) return { certSha256, stored: false };
-      throw new Error('This app already has a different signing key in the cloud; a key is never replaced.');
+      throw new Refused('This app already has a different signing key in the cloud; a key is never replaced.');
     }
     const plain = await openWith(await transportKey(), box as Sealed, `appkey-move:${moveId}`);
     const inner = JSON.parse(new TextDecoder().decode(plain)) as { p12: string; storePassword: string; keyAlias: string };
     plain.fill(0);
-    if (!inner.p12 || !inner.storePassword || !inner.keyAlias) throw new Error('That key is not complete.');
+    if (!inner.p12 || !inner.storePassword || !inner.keyAlias) throw new Refused('That key is not complete.');
     const payload = new TextEncoder().encode(JSON.stringify({ p12: inner.p12, storePassword: inner.storePassword, keyAlias: inner.keyAlias }));
     const e = await envelopeSeal(payload, aadOf(app._id, app.packageName));
     payload.fill(0);
@@ -86,12 +86,12 @@ export const storeReadyKey = internalMutation({
     const have = await ctx.db.query('keys').withIndex('by_app', (q) => q.eq('appId', app._id)).first();
     if (have) {
       if (have.certSha256 === certSha256) return { certSha256, stored: false };
-      throw new Error('This app already has a different signing key in the cloud; a key is never replaced.');
+      throw new Refused('This app already has a different signing key in the cloud; a key is never replaced.');
     }
     const plain = await openWith(await transportKey(), box as Sealed, `appkey-ready:${appId}`);
     const inner = JSON.parse(new TextDecoder().decode(plain)) as { p12: string; storePassword: string; keyAlias: string };
     plain.fill(0);
-    if (!inner.p12 || !inner.storePassword || !inner.keyAlias) throw new Error('That key is not complete.');
+    if (!inner.p12 || !inner.storePassword || !inner.keyAlias) throw new Refused('That key is not complete.');
     const payload = new TextEncoder().encode(JSON.stringify({ p12: inner.p12, storePassword: inner.storePassword, keyAlias: inner.keyAlias }));
     const e = await envelopeSeal(payload, aadOf(app._id, app.packageName));
     payload.fill(0);
@@ -129,10 +129,10 @@ export const ticket = internalMutation({
     const t = (await ctx.db.get(threadId))!;
     const app = (await ctx.db.get(t.appId))!;
     const key = await ctx.db.query('keys').withIndex('by_app', (q) => q.eq('appId', app._id)).first();
-    if (!key) throw new Error('This app has no signing key yet.');
+    if (!key) throw new Refused('This app has no signing key yet.');
     // One ticket per build number: a second ask for the same build is refused.
     const used = await ctx.db.query('signingTickets').withIndex('by_thread', (q) => q.eq('threadId', threadId)).filter((q) => q.eq(q.field('build'), build)).first();
-    if (used) throw new Error(`Build ${build} was already given its key.`);
+    if (used) throw new Refused(`Build ${build} was already given its key.`);
     await ctx.db.insert('signingTickets', { threadId, appId: app._id, build, usedAt: Date.now(), expiresAt: Date.now() + TICKET_MS });
     // The envelope leaves here still sealed; the HTTP action opens it and seals it to the runner
     // (Convex allows no key generation in a mutation).

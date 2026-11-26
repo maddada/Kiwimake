@@ -7,7 +7,7 @@ import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { httpAction, internalMutation, internalQuery, mutation } from './_generated/server';
 import { hmacSha256B64, sameHex, unb64 } from './lib/crypto';
-import { ownApp, requireUser, threadOf } from './lib/session';
+import { ownApp, requireUser, threadOf, Refused } from './lib/session';
 
 const TICKET_DAYS = 1;
 const ANSWERS_MAX = 512 * 1024;
@@ -40,7 +40,7 @@ export const open = mutation({
     const app = await ownApp(ctx, user._id, appId);
     const thread = await threadOf(ctx, app._id);
     const row = await ctx.db.query('pages').withIndex('by_thread_page', (q) => q.eq('threadId', thread._id).eq('pageId', pageId)).first();
-    if (!row?.htmlFileId) throw new Error('This page is not ready yet. Try again in a moment.');
+    if (!row?.htmlFileId) throw new Refused('This page is not ready yet. Try again in a moment.');
     const expires = Math.floor(Date.now() / 1000) + TICKET_DAYS * 86400;
     return { path: `/page/${pageId}/${expires.toString(36)}.${await sign(pageId, expires)}`, expiresAt: new Date(expires * 1000).toISOString() };
   },

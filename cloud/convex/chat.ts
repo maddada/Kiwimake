@@ -9,7 +9,7 @@ import { mutation, query, type MutationCtx } from './_generated/server';
 import { imageArg, pendingUserItem, requireGithub } from './apps';
 import { onCloudChange } from './lib/credits';
 import { joinOrOpenChange } from './billing';
-import { ownApp, requireUser, threadOf } from './lib/session';
+import { ownApp, requireUser, threadOf, Refused } from './lib/session';
 
 function withAppId(item: ChatItem, appId: string): ChatItem {
   // The box numbers its app its own way: every id the phone uses to reach the app is Convex's.
@@ -92,12 +92,12 @@ export const send = mutation({
     const app = await ownApp(ctx, user._id, appId);
     // Moving apps (moves.ts): an app made on a PC now is changed there; one moving waits.
     // A PC app with a change made in the cloud while its PC is off (pcoff.ts) takes follow-ups here too.
-    if (app.place !== 'cloud' && !(app.keptReady && app.pcOff)) throw new Error('This app is made on your PC now. Change it there.');
+    if (app.place !== 'cloud' && !(app.keptReady && app.pcOff)) throw new Refused('This app is made on your PC now. Change it there.');
     const moving = await ctx.db.query('moves').withIndex('by_app', (q) => q.eq('appId', app._id)).filter((q) => q.eq(q.field('state'), 'running')).first();
-    if (moving) throw new Error('This app is moving between your PC and the cloud. Try again when it is done.');
+    if (moving) throw new Refused('This app is moving between your PC and the cloud. Try again when it is done.');
     const thread = await threadOf(ctx, app._id);
     const body = text.trim().slice(0, 8000);
-    if (!body && !images?.length) throw new Error('Write a message first.');
+    if (!body && !images?.length) throw new Refused('Write a message first.');
     requireGithub(user);
     await onCloudChange(ctx, user);
     const changeId = await joinOrOpenChange(ctx, user, app, thread._id);

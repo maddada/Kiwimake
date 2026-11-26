@@ -31,6 +31,7 @@ import type * as lib_instabox from "../lib/instabox.js";
 import type * as lib_keyservice from "../lib/keyservice.js";
 import type * as lib_pcLinkPage from "../lib/pcLinkPage.js";
 import type * as lib_provider from "../lib/provider.js";
+import type * as lib_refused from "../lib/refused.js";
 import type * as lib_session from "../lib/session.js";
 import type * as lib_transport from "../lib/transport.js";
 import type * as moves from "../moves.js";
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   "lib/keyservice": typeof lib_keyservice;
   "lib/pcLinkPage": typeof lib_pcLinkPage;
   "lib/provider": typeof lib_provider;
+  "lib/refused": typeof lib_refused;
   "lib/session": typeof lib_session;
   "lib/transport": typeof lib_transport;
   moves: typeof moves;

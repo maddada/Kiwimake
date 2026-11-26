@@ -20,7 +20,7 @@ import {
 import { AGENT_MODEL_PRICES } from './agentPrices';
 import { estimateFor, firstAppSpent } from './estimates';
 import { balanceOf, expireGrants, spend, subscriptionOf } from './lib/credits';
-import { ownApp, requireUser } from './lib/session';
+import { ownApp, Refused, requireUser } from './lib/session';
 
 type Tokens = { inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number };
 
@@ -56,7 +56,7 @@ export async function openChange(ctx: MutationCtx, user: Doc<'users'>, app: Doc<
       : e.next.high;
   if (need > 0 && balance < need) {
     const short = Math.round(need / 100) / 10;
-    throw new Error(
+    throw new Refused(
       own
         ? 'Your 30 machine hours this month are used up. Extra credit pays for more.'
         : `This change needs about ${short} ${short === 1 ? 'credit' : 'credits'} and you have ${Math.max(0, Math.round(balance / 100) / 10)}. Get extra credit or a plan to go on.`,

@@ -17,6 +17,7 @@ import { action, httpAction, internalAction, internalMutation, internalQuery, ty
 import { EXTRA_PACK, PLANS, type Interval, type PlanId } from './config';
 import { grant, monthEnd, monthKey, subscriptionOf } from './lib/credits';
 import { hmacSha256B64, sameHex } from './lib/crypto';
+import { Refused } from './lib/refused';
 
 const API = 'https://api.stripe.com/v1';
 
@@ -32,15 +33,15 @@ const DESCRIPTOR_SUFFIX = 'KIWIMAKE';
 async function priceId(key: string, wantCents: number): Promise<string> {
   const r = await stripe<{ data: { id: string; unit_amount: number; currency: string }[] }>('GET', `/prices?active=true&limit=1&lookup_keys[]=${encodeURIComponent(key)}`);
   const p = r.data[0];
-  if (!p) throw new Error('Payments are not set up yet.');
+  if (!p) throw new Refused('Payments are not set up yet.');
   // A Price that no longer matches config.ts must never charge a different amount than the app shows.
-  if (p.unit_amount !== wantCents || p.currency !== 'usd') throw new Error('Payments are being updated. Please try again later.');
+  if (p.unit_amount !== wantCents || p.currency !== 'usd') throw new Refused('Payments are being updated. Please try again later.');
   return p.id;
 }
 
 function secretKey(): string {
   const k = process.env.STRIPE_SECRET_KEY ?? '';
-  if (!k) throw new Error('Payments are not set up yet.');
+  if (!k) throw new Refused('Payments are not set up yet.');
   // Test mode only until launch: a live key is refused here.
   // A restricted key (rk_) is preferred: the account is shared, so Kiwimake's key can do only what Kiwimake needs.
   if (!/^(sk|rk)_test_/.test(k) && process.env.STRIPE_ALLOW_LIVE !== '1') throw new Error('Only a Stripe test key may be used here.');
@@ -101,7 +102,7 @@ export const checkout = action({
   args: { kind: v.union(v.literal('plan'), v.literal('extra')), plan: v.optional(v.union(v.literal('starter'), v.literal('pro'), v.literal('max'), v.literal('ownKey'))), interval: v.optional(v.union(v.literal('month'), v.literal('year'))) },
   handler: async (ctx, a): Promise<{ url: string }> => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error('Sign in first.');
+    if (!userId) throw new Refused('Sign in first.');
     const user = (await ctx.runQuery(internal.stripe.userRow, { userId }))!;
     let customer = user.stripeCustomerId;
     // A customer from another Stripe account (the dev deployment moved accounts) or one deleted at Stripe is made again.
@@ -147,10 +148,10 @@ export const portal = action({
   args: {},
   handler: async (ctx): Promise<{ url: string }> => {
     const userId = await getAuthUserId(ctx);
-    if (!userId) throw new Error('Sign in first.');
+    if (!userId) throw new Refused('Sign in first.');
     const user = await ctx.runQuery(internal.stripe.userRow, { userId });
-    if (!user || user.blocked || user.deletingAt) throw new Error('Sign in first.');
-    if (!user.stripeCustomerId) throw new Error('You have no plan or payments to manage yet.');
+    if (!user || user.blocked || user.deletingAt) throw new Refused('Sign in first.');
+    if (!user.stripeCustomerId) throw new Refused('You have no plan or payments to manage yet.');
     const configuration = await portalConfiguration(ctx);
     const s = await stripe<{ url: string }>('POST', '/billing_portal/sessions', {
       customer: user.stripeCustomerId,

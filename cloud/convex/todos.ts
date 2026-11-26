@@ -3,7 +3,7 @@ import { v } from 'convex/values';
 import type { TodoItem } from '../../shared/protocol';
 import type { Doc } from './_generated/dataModel';
 import { mutation, query } from './_generated/server';
-import { ownApp, requireUser } from './lib/session';
+import { ownApp, requireUser, Refused } from './lib/session';
 
 const iso = (t: number) => new Date(t).toISOString();
 const item = (r: Doc<'todos'>): TodoItem => ({ id: r._id, text: r.text, done: r.done, createdAt: iso(r._creationTime), updatedAt: iso(r.at) });
@@ -23,7 +23,7 @@ export const add = mutation({
     const user = await requireUser(ctx);
     const app = await ownApp(ctx, user._id, appId);
     const t = text.trim().replace(/\s+/g, ' ').slice(0, 200);
-    if (!t) throw new Error('Write the to-do first.');
+    if (!t) throw new Refused('Write the to-do first.');
     const id = await ctx.db.insert('todos', { appId: app._id, text: t, done: false, at: Date.now() });
     return item((await ctx.db.get(id))!);
   },
@@ -34,7 +34,7 @@ async function ownTodo(ctx: Parameters<typeof requireUser>[0], appId: string, to
   const app = await ownApp(ctx, user._id, appId);
   const id = ctx.db.normalizeId('todos', todoId);
   const row = id ? await ctx.db.get(id) : null;
-  if (!row || row.appId !== app._id) throw new Error('That to-do is gone.');
+  if (!row || row.appId !== app._id) throw new Refused('That to-do is gone.');
   return row;
 }
 

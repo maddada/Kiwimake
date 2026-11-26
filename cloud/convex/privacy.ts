@@ -17,7 +17,7 @@ import type { Doc, Id, TableNames } from './_generated/dataModel';
 import { httpAction, internalAction, internalMutation, internalQuery, mutation, query, type MutationCtx } from './_generated/server';
 import { PLANS, PRIVACY } from './config';
 import { envelopeSeal, randomToken, sha256Hex } from './lib/crypto';
-import { requireUser } from './lib/session';
+import { requireUser, Refused } from './lib/session';
 import { stripe } from './stripe';
 
 const MINUTE = 60_000;
@@ -312,7 +312,7 @@ export const deleteAccount = mutation({
   args: { confirm: v.string() },
   handler: async (ctx, { confirm }) => {
     const user = await requireUser(ctx);
-    if (confirm !== DELETE_WORDS) throw new Error('Confirm the deletion first.');
+    if (confirm !== DELETE_WORDS) throw new Refused('Confirm the deletion first.');
     const now = Date.now();
     await ctx.db.patch(user._id, { deletingAt: now });
     for (const l of await ctx.db

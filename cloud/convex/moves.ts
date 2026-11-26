@@ -15,6 +15,7 @@ import { internal } from './_generated/api';
 import { internalMutation, internalQuery, type MutationCtx } from './_generated/server';
 import { freeSlug, requireGithub, slugify } from './apps';
 import type { ChatItem, TodoItem } from '../../shared/protocol';
+import { Refused } from './lib/session';
 
 export type MoveKind = 'toCloud' | 'toPc';
 const PACKAGE_RE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
@@ -32,8 +33,8 @@ async function liveMove(ctx: MutationCtx, appId: Id<'apps'>) {
 export async function moveOf(ctx: MutationCtx, moveId: string, userId: Id<'users'>): Promise<Doc<'moves'>> {
   const id = ctx.db.normalizeId('moves', moveId);
   const m = id ? await ctx.db.get(id) : null;
-  if (!m || m.userId !== userId) throw new Error('That move is not here.');
-  if (m.state !== 'running') throw new Error(m.state === 'done' ? 'That move is finished already.' : 'That move was stopped. Start it again.');
+  if (!m || m.userId !== userId) throw new Refused('That move is not here.');
+  if (m.state !== 'running') throw new Refused(m.state === 'done' ? 'That move is finished already.' : 'That move was stopped. Start it again.');
   return m;
 }
 
@@ -61,15 +62,15 @@ export const startToCloud = internalMutation({
   handler: async (ctx, a) => {
     const user = (await ctx.db.get(a.userId))!;
     requireGithub(user);
-    if (!PACKAGE_RE.test(a.packageName)) throw new Error('That app has no valid package name.');
+    if (!PACKAGE_RE.test(a.packageName)) throw new Refused('That app has no valid package name.');
     const mine = (await ctx.db.query('apps').withIndex('by_package', (q) => q.eq('packageName', a.packageName)).collect()).filter((r) => !r.deletedAt);
-    if (mine.some((r) => r.userId !== a.userId)) throw new Error('Another account has an app with this package name.');
+    if (mine.some((r) => r.userId !== a.userId)) throw new Refused('Another account has an app with this package name.');
     let app = mine.find((r) => r.userId === a.userId) ?? null;
-    if (app?.place === 'cloud') throw new Error('This app is in the cloud already.');
+    if (app?.place === 'cloud') throw new Refused('This app is in the cloud already.');
     if (app) {
       const running = await liveMove(ctx, app._id);
       if (running && running.kind === 'toCloud' && running.pcLinkId === a.linkId) return { moveId: running._id, appId: app._id, resumed: true };
-      if (running) throw new Error('This app is already moving.');
+      if (running) throw new Refused('This app is already moving.');
       await ctx.db.patch(app._id, { pcLinkId: a.linkId, pcAppId: a.pcAppId, name: a.name.slice(0, 40), buildHigh: Math.max(app.buildHigh, a.buildHigh), updatedAt: Date.now() });
     } else {
       const slug = await freeSlug(ctx, a.userId, slugify(a.slug || a.name));
@@ -101,17 +102,17 @@ export const startToPc = internalMutation({
   handler: async (ctx, a) => {
     const id = ctx.db.normalizeId('apps', a.appId);
     const app = id ? await ctx.db.get(id) : null;
-    if (!app || app.userId !== a.userId || app.deletedAt) throw new Error('That app is not here any more.');
-    if (app.place !== 'cloud') throw new Error('This app is not in the cloud.');
-    if (!app.repo || app.buildHigh < 1) throw new Error('This app has no version yet. Move it once it has one.');
+    if (!app || app.userId !== a.userId || app.deletedAt) throw new Refused('That app is not here any more.');
+    if (app.place !== 'cloud') throw new Refused('This app is not in the cloud.');
+    if (!app.repo || app.buildHigh < 1) throw new Refused('This app has no version yet. Move it once it has one.');
     const running = await liveMove(ctx, app._id);
     if (running && running.kind === 'toPc' && running.pcLinkId === a.linkId) return { moveId: running._id, ...(await describe(ctx, app)) };
-    if (running) throw new Error('This app is already moving.');
+    if (running) throw new Refused('This app is already moving.');
     const thread = await ctx.db.query('threads').withIndex('by_app', (q) => q.eq('appId', app._id)).first();
     if (thread) {
       const open = await ctx.db.query('changes').withIndex('by_thread_state', (q) => q.eq('threadId', thread._id).eq('state', 'running')).first();
       const queued = await ctx.db.query('changes').withIndex('by_thread_state', (q) => q.eq('threadId', thread._id).eq('state', 'queued')).first();
-      if (open || queued || thread.busy) throw new Error('This app is working on a change. Move it when the change is done.');
+      if (open || queued || thread.busy) throw new Refused('This app is working on a change. Move it when the change is done.');
     }
     const moveId = await ctx.db.insert('moves', { appId: app._id, userId: a.userId, pcLinkId: a.linkId, kind: 'toPc', steps: {}, state: 'running', startedAt: Date.now() });
     return { moveId, ...(await describe(ctx, app)) };
@@ -208,7 +209,7 @@ export const finish = internalMutation({
   handler: async (ctx, { moveId, userId, buildHigh, pcAppId, latestApk }) => {
     const m = await moveOf(ctx, moveId, userId);
     const missing = (['code', 'key', 'chat'] as const).filter((s) => !m.steps[s]);
-    if (missing.length) throw new Error(`The move is not done yet: ${missing.join(', ')} still to go.`);
+    if (missing.length) throw new Refused(`The move is not done yet: ${missing.join(', ')} still to go.`);
     const app = (await ctx.db.get(m.appId))!;
     const now = Date.now();
     if (m.kind === 'toCloud') {

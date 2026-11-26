@@ -6,7 +6,7 @@
 import { v } from 'convex/values';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
-import { requireUser } from './lib/session';
+import { requireUser, Refused } from './lib/session';
 
 export type PcScope = 'share' | 'web' | 'move';
 export const ALL_SCOPES: PcScope[] = ['share', 'web', 'move'];
@@ -125,8 +125,8 @@ export const approve = mutation({
   handler: async (ctx, { code }) => {
     const user = await requireUser(ctx);
     const r = await requestOf(ctx, code);
-    if (!r || r.consumedAt || r.expiresAt < Date.now()) throw new Error('That code has run out. Start again on your PC.');
-    if (r.approvedAt && r.userId !== user._id) throw new Error('That code was already used.');
+    if (!r || r.consumedAt || r.expiresAt < Date.now()) throw new Refused('That code has run out. Start again on your PC.');
+    if (r.approvedAt && r.userId !== user._id) throw new Refused('That code was already used.');
     await ctx.db.patch(r._id, { userId: user._id, approvedAt: r.approvedAt ?? Date.now() });
     return { deviceName: r.deviceName, email: user.email ?? null };
   },

@@ -48,7 +48,7 @@ describe('connecting GitHub', () => {
   test('the link carries a state; the callback turns the code into sealed tokens for that person', async () => {
     const { t, userId, as } = await setup();
     const link = await as.mutation(api.github.connectUrl, {});
-    expect(link.url).toMatch(/^https:\/\/github\.com\/apps\/kiwimake-cloud-dev\/installations\/new\?state=/);
+    expect(link.url).toMatch(/^https:\/\/github\.com\/login\/oauth\/authorize\?client_id=Iv1\.client&state=/);
     const state = new URL(link.url).searchParams.get('state')!;
     fakeFetch([token({ access_token: 'ghu_access', refresh_token: 'ghr_refresh', expires_in: 28800, refresh_token_expires_in: 15811200 }), userRoute, installsRoute]);
     const res = await t.fetch(`/github/callback?code=abc&state=${state}&installation_id=555&setup_action=install`);
@@ -64,6 +64,37 @@ describe('connecting GitHub', () => {
     // The state works once.
     const again = await t.fetch(`/github/callback?code=abc&state=${state}`);
     expect(await again.text()).toContain('expired');
+  });
+
+  test('the App already on their GitHub (a second account, or back after deleting one): authorize is all it takes', async () => {
+    const { t, userId, as } = await setup();
+    const link = await as.mutation(api.github.connectUrl, {});
+    const state = new URL(link.url).searchParams.get('state')!;
+    fakeFetch([token({ access_token: 'ghu_access', refresh_token: 'ghr_refresh', expires_in: 28800 }), userRoute, installsRoute]);
+    // GitHub's authorize page sends no installation_id: the callback finds the installation itself.
+    const res = await t.fetch(`/github/callback?code=abc&state=${state}`);
+    expect(await res.text()).toContain('GitHub is connected');
+    expect((await t.run((ctx) => ctx.db.get(userId)))!.githubInstallationId).toBe('555');
+  });
+
+  test('not installed yet: on from authorize to the install page with a fresh state, then connected', async () => {
+    const { t, userId, as } = await setup();
+    const link = await as.mutation(api.github.connectUrl, {});
+    const state = new URL(link.url).searchParams.get('state')!;
+    const none: Route = (url) => (url === 'https://api.github.com/user/installations' ? { status: 200, body: { installations: [] } } : undefined);
+    fakeFetch([token({ access_token: 'ghu_access' }), userRoute, none]);
+    const res = await t.fetch(`/github/callback?code=abc&state=${state}`);
+    expect(res.status).toBe(302);
+    const next = new URL(res.headers.get('Location')!);
+    expect(`${next.origin}${next.pathname}`).toBe('https://github.com/apps/kiwimake-cloud-dev/installations/new');
+    const fresh = next.searchParams.get('state')!;
+    expect(fresh).not.toBe(state);
+    expect((await t.run((ctx) => ctx.db.get(userId)))!.githubInstallationId).toBeUndefined();
+    // GitHub's Install & Authorize comes back with the new state and the installation.
+    fakeFetch([token({ access_token: 'ghu_access2' }), userRoute, installsRoute]);
+    const back = await t.fetch(`/github/callback?code=def&state=${fresh}&installation_id=555&setup_action=install`);
+    expect(await back.text()).toContain('GitHub is connected');
+    expect((await t.run((ctx) => ctx.db.get(userId)))!.githubInstallationId).toBe('555');
   });
 
   test('a made-up state is refused and stores nothing', async () => {
