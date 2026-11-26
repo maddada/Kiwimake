@@ -82,10 +82,23 @@ export const revokePcLink = mutation({
   },
 });
 
+/**
+ * Whether paying works on this deployment: a Stripe key is set and is allowed here (a test key, or a
+ * live one with STRIPE_ALLOW_LIVE=1, as stripe.ts checks). Until then "Your plan" shows the paid
+ * plans and extra credit as coming soon, so nobody reaches a checkout that cannot open; the free
+ * plan works either way.
+ */
+export function paymentsOpen(env: Record<string, string | undefined> = process.env): boolean {
+  const k = env.STRIPE_SECRET_KEY ?? '';
+  if (!k) return false;
+  return /^(sk|rk)_test_/.test(k) || (/^(sk|rk)_live_/.test(k) && env.STRIPE_ALLOW_LIVE === '1');
+}
+
 /** The plans and the extra credit pack, for "Your plan" (prices in cents, credits a month). */
 export const plans = query({
   args: {},
   handler: async () => ({
+    paymentsOpen: paymentsOpen(),
     plans: (['starter', 'pro', 'max', 'ownKey'] as const).map((id) => ({
       id,
       name: PLANS[id].name,

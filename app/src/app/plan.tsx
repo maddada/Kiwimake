@@ -17,7 +17,7 @@ import { T } from "@/ui/Text";
 import { border, icon, radius, size, space, useTheme } from "@/ui/theme";
 
 type PlanRow = { id: "starter" | "pro" | "max" | "ownKey"; name: string; monthCents: number; yearCents: number; credits: number };
-type Plans = { plans: PlanRow[]; extra: { cents: number; credits: number; months: number }; free: { credits: number } };
+type Plans = { paymentsOpen?: boolean; plans: PlanRow[]; extra: { cents: number; credits: number; months: number }; free: { credits: number } };
 
 const dollars = (cents: number) => (cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`);
 const longDate = (t: number) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
@@ -100,6 +100,9 @@ export default function PlanScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const current = account?.plan.id ?? "free";
+  // Paid plans wait for the cloud's live payments: shown, but "Coming soon" instead of a checkout.
+  // An older deployment that does not say is treated as open.
+  const open = plans?.paymentsOpen !== false;
 
   const run = async (what: string, fn: () => Promise<unknown>) => {
     setBusy(what);
@@ -143,6 +146,11 @@ export default function PlanScreen() {
             }
           />
         ) : null}
+        {plans && !open ? (
+          <T color="textSecondary" testID="plan-coming-soon">
+            Paid plans and extra credit are coming soon. Your free credits work now.
+          </T>
+        ) : null}
         <Toggle value={interval} onChange={setInterval} />
         {(plans?.plans ?? [])
           .filter((p) => p.id !== "ownKey")
@@ -163,6 +171,10 @@ export default function PlanScreen() {
                     <Check size={icon.size.sm} strokeWidth={1.75} color={t.ready} />
                     <T variant="buttonSmall">Your plan</T>
                   </View>
+                ) : !open ? (
+                  <T variant="buttonSmall" color="textSecondary" testID={`plan-soon-${p.id}`}>
+                    Coming soon
+                  </T>
                 ) : (
                   <Button small label={`Choose ${p.name}`} busy={busy === p.id} testID={`plan-choose-${p.id}`} onPress={() => buy(p.id, { kind: "plan", plan: p.id, interval })} />
                 )}
@@ -176,7 +188,13 @@ export default function PlanScreen() {
               {dollars(plans.extra.cents)} for {plans.extra.credits} credits, with or without a plan. They last {plans.extra.months} months.
             </T>
             <View style={{ alignItems: "flex-end" }}>
-              <Button small variant="quiet" label="Buy extra credit" busy={busy === "extra"} testID="plan-buy-extra" onPress={() => buy("extra", { kind: "extra" })} />
+              {open ? (
+                <Button small variant="quiet" label="Buy extra credit" busy={busy === "extra"} testID="plan-buy-extra" onPress={() => buy("extra", { kind: "extra" })} />
+              ) : (
+                <T variant="buttonSmall" color="textSecondary" testID="plan-soon-extra">
+                  Coming soon
+                </T>
+              )}
             </View>
           </Card>
         ) : null}
@@ -202,7 +220,11 @@ export default function PlanScreen() {
               <View style={{ alignItems: "flex-end" }}>
                 {ownKey ? (
                   <View style={{ alignItems: "flex-end", gap: space.sm }}>
-                    {current !== "ownKey" ? (
+                    {current !== "ownKey" && !open ? (
+                      <T variant="buttonSmall" color="textSecondary" testID="plan-soon-ownKey">
+                        Coming soon
+                      </T>
+                    ) : current !== "ownKey" ? (
                       <Button small label="Choose Own key" busy={busy === "ownKey"} testID="plan-choose-ownKey" onPress={() => buy("ownKey", { kind: "plan", plan: "ownKey", interval })} />
                     ) : null}
                     <Button small variant="text" label="Remove my key" busy={busy === "remove"} onPress={() => run("remove", () => removeOwnKey({}))} testID="own-key-remove" />

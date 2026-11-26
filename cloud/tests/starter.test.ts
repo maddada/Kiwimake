@@ -9,6 +9,7 @@ import type { Id } from '../convex/_generated/dataModel';
 import { sha256Hex } from '../convex/lib/crypto';
 import { envelope, parseDsn, reportError, reportOf, scrub, sendReport } from '../convex/lib/errors';
 import { rootPage } from '../convex/http';
+import { paymentsOpen } from '../convex/accounts';
 
 const modules = import.meta.glob('../convex/**/*.*s');
 const DSN = 'https://abc123public@o42.ingest.sentry.io/4507';
@@ -123,6 +124,20 @@ describe('Sentry without an SDK', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toContain('"where":"/runner/build"');
     expect(sent[0]).not.toContain(token);
+  });
+});
+
+describe('paid plans before live payments', () => {
+  test('no Stripe key, or a live key without STRIPE_ALLOW_LIVE: the plans say payments are closed', async () => {
+    expect(paymentsOpen({})).toBe(false);
+    expect(paymentsOpen({ STRIPE_SECRET_KEY: 'rk_live_abc' })).toBe(false);
+    expect(paymentsOpen({ STRIPE_SECRET_KEY: 'rk_live_abc', STRIPE_ALLOW_LIVE: '1' })).toBe(true);
+    expect(paymentsOpen({ STRIPE_SECRET_KEY: 'sk_test_abc' })).toBe(true);
+    expect(paymentsOpen({ STRIPE_SECRET_KEY: 'nonsense', STRIPE_ALLOW_LIVE: '1' })).toBe(false);
+    const t = convexTest(schema, modules);
+    expect((await t.query(api.accounts.plans, {})).paymentsOpen).toBe(false);
+    vi.stubEnv('STRIPE_SECRET_KEY', 'rk_test_abc');
+    expect((await t.query(api.accounts.plans, {})).paymentsOpen).toBe(true);
   });
 });
 

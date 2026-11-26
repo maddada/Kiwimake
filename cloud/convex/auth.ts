@@ -44,7 +44,9 @@ const ResendOTP = Resend({
       method: 'POST',
       headers: { Authorization: `Bearer ${provider.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: 'Kiwimake <onboarding@resend.dev>',
+        // AUTH_EMAIL_FROM: an address on the domain verified in Resend (production); Resend's test
+        // sender otherwise, which reaches only the Resend account's own address.
+        from: process.env.AUTH_EMAIL_FROM || 'Kiwimake <onboarding@resend.dev>',
         to: [email],
         subject: `Your Kiwimake code: ${token}`,
         text: `Your sign-in code is ${token}. It works for 10 minutes. If you did not ask for it, ignore this email.`,
