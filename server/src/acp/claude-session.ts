@@ -79,6 +79,8 @@ export interface AcpAgentProfile {
   normalizeUpdate?(update: unknown): unknown;
   /** Rewrites a permission request before the chat sees it (Antigravity's own questions). */
   normalizePermission?(request: AcpPermissionRequest): AcpPermissionRequest;
+  /** false: the model takes no pictures, whatever initialize says (OpenCode on DeepSeek V4 Pro). */
+  images?: boolean;
   /** A stop reason that means the plan is used up: the turn fails with this message (Antigravity: refusal). */
   quotaStop?: { stopReason: string; message: string; limit(seenAt: string): PlanLimit; ok(seenAt: string): PlanLimit };
 }
@@ -194,7 +196,7 @@ export class ClaudeSession {
       this.canResume = supportsResume || supportsLoad;
       // bb: session.supportsImageInput = capabilities.prompt.image
       const promptCaps = isJsonObject(agent["promptCapabilities"]) ? agent["promptCapabilities"] : {};
-      this.supportsImageInput = promptCaps["image"] === true;
+      this.supportsImageInput = promptCaps["image"] === true && this.profile.images !== false;
       const authMethods = isJsonObject(init) && Array.isArray(init["authMethods"]) ? init["authMethods"] : [];
       const authMethod = this.profile.authMethod;
       if (authMethod && authMethods.some((m) => isJsonObject(m) && m["id"] === authMethod)) {

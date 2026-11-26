@@ -5,7 +5,7 @@
 // companion builds the app (build errors go back to that worker), then the worker's report goes to
 // the coordinator as a message. Everything is saved under <state>/workers/ so a restart resumes.
 // See docs/APP-COORDINATOR.md.
-import { createSession, selectedEngine, resumeFor, rememberSession, type AgentSession } from "./acp/session.ts";
+import { createSession, sessionEngine, resumeFor, rememberSession, type AgentSession, type SessionEngine } from "./acp/session.ts";
 import { randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { ChatItem, PlanLimit, ServerEvent, TokenUsage, WorkerInfo, WorkerState } from "../../shared/protocol.ts";
@@ -20,7 +20,6 @@ import { checkCommand } from "./playbook.ts";
 import { nowIso, readJson, writeJsonAtomic } from "./fs-util.ts";
 import { existsSync } from "node:fs";
 import { isJsonObject } from "./acp/acp-client.ts";
-import type { Engine } from "../../shared/engines.mts";
 import {
   appBranch,
   ensureHelperCopy,
@@ -73,8 +72,8 @@ interface WorkerRecord {
   brief: string;
   rowId: string; // its row in the main chat
   sessionId?: string;
-  sessionEngine?: Engine;
-  engineSessions?: Partial<Record<Engine, string>>;
+  sessionEngine?: SessionEngine;
+  engineSessions?: Partial<Record<SessionEngine, string>>;
   inbox: string[]; // prompts for its next turn
   forceBuild?: boolean; // build after its first turn even when no file changed (Try again)
   buildAgain?: boolean; // the PC restarted while it was building: land and build again, no turn first
@@ -408,7 +407,7 @@ export class WorkerManager {
     const session = createSession(this.host.config, {
       cwd,
       env: appsCliEnv(this.host.stateDir, appId),
-      resumeSessionId: resumeFor(w, selectedEngine(this.host.config)),
+      resumeSessionId: resumeFor(w, sessionEngine(this.host.config)),
       instructions: ((text) => (this.host.config.cloud ? cloudWords(text) : text))(
         workerPlaybook({ name: record.app.name, packageName: record.app.packageName, dir: cwd, preset: record.app.preset }, w.info),
       ),
@@ -452,7 +451,7 @@ export class WorkerManager {
     });
     await session.start();
     rt.session = session;
-    rememberSession(w, selectedEngine(this.host.config), session.sessionId);
+    rememberSession(w, sessionEngine(this.host.config), session.sessionId);
     this.save(appId);
     return session;
   }

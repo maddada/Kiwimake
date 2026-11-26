@@ -4,14 +4,14 @@ import { join } from "node:path";
 import type { App, ChatItem } from "../../shared/protocol.ts";
 import { nowIso, readJson, writeJsonAtomic } from "./fs-util.ts";
 import type { ChatDraft } from "./acp/translate.ts";
-import type { Engine } from "../../shared/engines.mts";
+import type { SessionEngine } from "./acp/session.ts";
 
 export interface AppRecord {
   app: App;
   dir: string;
   sessionId?: string;
-  sessionEngine?: Engine;
-  engineSessions?: Partial<Record<Engine, string>>;
+  sessionEngine?: SessionEngine;
+  engineSessions?: Partial<Record<SessionEngine, string>>;
   iconStamp?: string;
   deleted?: boolean;
   /** When the person deleted it (Recently deleted shows it). */

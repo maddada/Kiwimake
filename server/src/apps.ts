@@ -1,7 +1,6 @@
 // The app manager: creating apps, one Claude Code session per app, a build after every turn,
 // Git/GitHub, and the chat timeline. Every change goes out as a ServerEvent.
-import { createSession, selectedEngine, resumeFor, rememberSession, type AgentSession } from "./acp/session.ts";
-import { engineName, type Engine } from "../../shared/engines.mts";
+import { createSession, selectedEngine, sessionEngine, sessionEngineName, resumeFor, rememberSession, type AgentSession, type SessionEngine } from "./acp/session.ts";
 import { randomUUID } from "node:crypto";
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -168,15 +167,15 @@ function firstLine(text: string, max = 300): string {
 }
 
 /** Keep the provider's reason, especially a limit's reset time, when a prompt fails. */
-export function agentFailure(error: unknown, engine: Engine = "claude"): string {
+export function agentFailure(error: unknown, engine: SessionEngine = "claude"): string {
   const raw = error instanceof Error ? error.message : String(error);
   const message = firstLine(raw.replace(/^Internal error:\s*/i, "").replace(/:\s*\{"errorKind"\s*:\s*"[^"]+"\}\s*$/, ""), 200);
   if (/"errorKind"\s*:\s*"rate_limit"/i.test(raw) || /you(?:'|’)ve hit your .*limit|usage limit|rate.?limit|quota exceeded|usage_limit_reached/i.test(message)) {
-    return `${engineName(engine)} usage limit reached. ${message.replace(/[.!?]$/, "")}. Try again after the limit resets.`;
+    return `${sessionEngineName(engine)} usage limit reached. ${message.replace(/[.!?]$/, "")}. Try again after the limit resets.`;
   }
   // Codex workspaces and API accounts run out of credits rather than hitting a timed limit.
   if (/out of credits|insufficient[_ ](?:quota|credits)|credit balance is too low/i.test(message)) {
-    return `${engineName(engine)} has no credits left. ${message.replace(/[.!?]$/, "")}. Add credits to your account, then try again.`;
+    return `${sessionEngineName(engine)} has no credits left. ${message.replace(/[.!?]$/, "")}. Add credits to your account, then try again.`;
   }
   return `The agent stopped unexpectedly: ${message}`;
 }
@@ -2039,7 +2038,7 @@ ${overviewNudge()}` : note;
     const appInfo = { name: record.app.name, packageName: record.app.packageName, dir: record.dir, preset: record.app.preset };
     const coordinated = this.workers
       ? {
-          instructions: coordinatorPlaybook(appInfo, { cloud: Boolean(this.config.cloud) }),
+          instructions: coordinatorPlaybook(appInfo, { cloud: Boolean(this.config.cloud), ...(this.config.cloud?.engine === "opencode" ? { poweredBy: "DeepSeek" } : {}) }),
           // An app made before workers resumes its session and gets the new playbook once.
           instructionsOnResume: (ready.coordinatorPlaybook ?? 0) < COORDINATOR_PLAYBOOK_VERSION,
           mcpServers: [workerToolsMcpServer(this.config.port, record.app.id, this.workers.toolsToken), this.pages.mcpServer(this.config.port, record.app.id), this.history.mcpServer(this.config.port, record.app.id)],
@@ -2048,12 +2047,12 @@ ${overviewNudge()}` : note;
     const session = createSession(this.config, {
       cwd: record.dir,
       env: appsCliEnv(this.store.stateDir, record.app.id),
-      resumeSessionId: resumeFor(record, selectedEngine(this.config)),
+      resumeSessionId: resumeFor(record, sessionEngine(this.config)),
       instructions: appPlaybook(appInfo),
       mcpServers: [this.pages.mcpServer(this.config.port, record.app.id), this.history.mcpServer(this.config.port, record.app.id)],
       ...coordinated,
       askPermissions: this.config.askPermissions,
-      // The cloud: the app's chat is the orchestrator (Opus 5.5 high), the agent another Unix user.
+      // The cloud: the app's chat is the orchestrator (cloud-settings.ts), the agent another Unix user.
       ...(this.config.cloud ? { model: this.config.cloud.orchestrator, tag: { role: "orchestrator" }, clientFs: false } : {}),
       onUpdate: (update) => {
         if (isJsonObject(update) && (update["sessionUpdate"] === "tool_call" || update["sessionUpdate"] === "tool_call_update")) {
@@ -2073,7 +2072,7 @@ ${overviewNudge()}` : note;
       onPlanLimit: (limit: PlanLimit) => this.usage.notePlan(limit),
       onPermission: (ask) => this.handlePermission(record, ask),
       onExit: (info) => {
-        this.log(`[${slug}] ${engineName(selectedEngine(this.config))} exited (code ${info.code ?? "none"})`);
+        this.log(`[${slug}] ${sessionEngineName(sessionEngine(this.config))} exited (code ${info.code ?? "none"})`);
         if (rt.session === session) rt.session = undefined;
       },
       log: (message) => this.log(`[${slug}] ${message}`),
@@ -2082,16 +2081,16 @@ ${overviewNudge()}` : note;
       () => {
         rt.session = session;
         rt.starting = undefined;
-        rememberSession(record, selectedEngine(this.config), session.sessionId);
+        rememberSession(record, sessionEngine(this.config), session.sessionId);
         record.app.engine = selectedEngine(this.config);
         if (coordinated) ready.coordinatorPlaybook = COORDINATOR_PLAYBOOK_VERSION;
         this.store.save();
-        this.log(`[${slug}] ${engineName(selectedEngine(this.config))} session ${session.sessionId} ${session.resumed ? "resumed" : "started"} (mode ${session.modeId ?? "?"})`);
+        this.log(`[${slug}] ${sessionEngineName(sessionEngine(this.config))} session ${session.sessionId} ${session.resumed ? "resumed" : "started"} (mode ${session.modeId ?? "?"})`);
         return session;
       },
       (error: unknown) => {
         rt.starting = undefined;
-        throw new Error(`${engineName(selectedEngine(this.config))} could not start: ${(error as Error).message}`);
+        throw new Error(`${sessionEngineName(sessionEngine(this.config))} could not start: ${(error as Error).message}`);
       },
     );
     return rt.starting;
@@ -2133,7 +2132,7 @@ ${overviewNudge()}` : note;
       this.log(`[${record.app.slug}] prompt failed:`, (error as Error).message);
       // The queue reports this once and stores it on App.error. Do not replace the cause with
       // a second generic error after finishing the turn.
-      failure = agentFailure(error, selectedEngine(this.config));
+      failure = agentFailure(error, sessionEngine(this.config));
     } finally {
       rt.turnActive = false;
       for (const draft of rt.translator.finishTurn(stopReason)) this.emitItem(record, draft);

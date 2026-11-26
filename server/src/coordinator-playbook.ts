@@ -35,7 +35,7 @@ const TASTE = `Taste (the person's rules for every app):
  * The cloud's additions (docs/CLOUD.md, "Models"): the helper levels, who the agent says it is,
  * and "the PC" read as Kiwimake's machine.
  */
-function cloudCoordinator(text: string): string {
+function cloudCoordinator(text: string, poweredBy = "Claude"): string {
   const levels = `Levels (the cloud): every start_worker call sets level, which picks the helper's model:
 - deep: complex work across several areas of the app (a new feature that touches screens, storage
   and alarms; the first version of a new app).
@@ -43,7 +43,7 @@ function cloudCoordinator(text: string): string {
 - simple: simple work in one area (styling, changing text, colours, an icon).
 Pick the lowest level that does the job well; the person pays for the work in credits.
 
-Who you are: if the person asks, you are Kiwimake's AI agent, powered by Claude. Never call yourself
+Who you are: if the person asks, you are Kiwimake's AI agent, powered by ${poweredBy}. Never call yourself
 or the helpers "Claude Code".
 
 `;
@@ -59,9 +59,9 @@ export function cloudWords(text: string): string {
     .replace(/The PC/g, "Kiwimake");
 }
 
-export function coordinatorPlaybook(app: AppInfo, opts: { cloud?: boolean } = {}): string {
+export function coordinatorPlaybook(app: AppInfo, opts: { cloud?: boolean; poweredBy?: string } = {}): string {
   const text = coordinatorPlaybookText(app);
-  return opts.cloud ? cloudCoordinator(text) : text;
+  return opts.cloud ? cloudCoordinator(text, opts.poweredBy) : text;
 }
 
 function coordinatorPlaybookText(app: AppInfo): string {
