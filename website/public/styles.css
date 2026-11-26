@@ -535,6 +535,13 @@ h2 {
 .cloud-note span {
   margin-right: 6px;
 }
+.cloud-note a {
+  white-space: nowrap;
+  margin-left: 6px;
+}
+.cloud-note a span {
+  margin: 0;
+}
 .faq-section {
   display: grid;
   grid-template-columns: 0.85fr 1.15fr;
