@@ -11,6 +11,10 @@ are made again from each app's GitHub repo; set `BACKUP_INCLUDE_FILES=1` to add 
 Each export also leaves a snapshot in the Convex dashboard, which Convex keeps for up to 7 days
 (at most two per deployment on Starter). So data stays in backups for at most 30 days.
 
+A deployment with no tables at all (never deployed to) gives a warning and no backup, and the
+backups already kept stay; one with tables but without `users`, `apps` or `keys` fails the run, so
+a wrong deploy key is noticed (GitHub emails the owner).
+
 ## Setting it up (once)
 
 1. Make the backup key on a trusted PC: `node kiwi-backup.mjs keygen --out kiwimake-backup.key`.

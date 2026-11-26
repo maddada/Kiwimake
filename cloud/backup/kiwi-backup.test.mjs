@@ -98,6 +98,13 @@ test('run: export, check, encrypt, upload, prune; refuses dev keys and exports w
 
   await assert.rejects(run({ ...env, CONVEX_DEPLOY_KEY: 'dev:x|y' }, { store, exportTo: exportZip }), /dev deploy key/);
   await assert.rejects(run(env, { store, exportTo: (out) => exportZip(out, ['users', 'apps']), log: () => {} }), /no keys table/);
+  // Never deployed to: a notice, nothing uploaded, nothing pruned.
+  const before = store.items.length;
+  const notes = [];
+  const empty = await run(env, { store, exportTo: (out) => exportZip(out, []), log: (m) => notes.push(m) });
+  assert.equal(empty.empty, true);
+  assert.equal(store.items.length, before);
+  assert.match(notes[0], /^::warning::happy-otter-123 has no tables yet/);
   await assert.rejects(run({ ...env, BACKUP_PUBLIC_KEY: 'nope' }, { store, exportTo: exportZip }), /BACKUP_PUBLIC_KEY/);
 });
 

@@ -246,7 +246,8 @@ function convexExport(env, out, includeFiles) {
 }
 
 export async function run(env = process.env, deps = {}) {
-  const log = deps.log ?? ((...m) => console.log(new Date().toISOString(), ...m));
+  // GitHub reads "::warning::" only at the start of a line, so those lines get no timestamp.
+  const log = deps.log ?? ((m) => console.log(m.startsWith('::') ? m : `${new Date().toISOString()} ${m}`));
   const key = String(env.CONVEX_DEPLOY_KEY ?? '');
   if (!/^(prod|dev):/.test(key)) throw new Error('CONVEX_DEPLOY_KEY must be a Convex deploy key');
   if (key.startsWith('dev:') && env.BACKUP_ALLOW_DEV !== '1') throw new Error('this is a dev deploy key; production backups need a production key');
@@ -265,6 +266,13 @@ export async function run(env = process.env, deps = {}) {
     const t0 = Date.now();
     (deps.exportTo ?? ((out) => convexExport(env, out, env.BACKUP_INCLUDE_FILES === '1')))(zip);
     const tables = zipTables(zip);
+    // A deployment with no tables at all has never been deployed to: nothing to keep yet, and
+    // the backups already kept stay (nothing is pruned). A notice, not a failure, so the daily
+    // job does not fail every night before launch.
+    if (!tables.some((t) => !t.startsWith('_'))) {
+      log(`::warning::${deployment} has no tables yet (never deployed?): no backup made, none removed`);
+      return { tag: null, tables, size: 0, sha256: null, removed: [], empty: true };
+    }
     // An export without the account and key tables is not a backup worth keeping.
     for (const must of ['users', 'apps', 'keys']) if (!tables.includes(must)) throw new Error(`the export has no ${must} table`);
     const tag = tagFor(now);
