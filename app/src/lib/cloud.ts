@@ -4,21 +4,29 @@
 // the account's cloud apps and open chats into the store. A phone can have both places: PC apps
 // keep the PC's socket, cloud apps come from Convex. App ids never collide: Convex ids are 32
 // lowercase letters and digits, a PC's are UUIDs.
+import Constants from "expo-constants";
 import * as SecureStore from "expo-secure-store";
 import { ConvexReactClient } from "convex/react";
 import { anyApi } from "convex/server";
 import { ApiError, type Client } from "./api";
+import { cloudMessage, needsSignIn } from "./cloudError";
 import type { App, AppVersion, ChatItem, CreateAppRequest, PageOpenResponse, PermissionAnswerRequest, SendMessageRequest, TodoItem, WorkerInfo } from "./protocol";
 
-export const CONVEX_URL = process.env.EXPO_PUBLIC_CONVEX_URL ?? "";
-/** Dev builds only: the "Try it without an account" sign-in (the dev deployment's anonymous provider). */
-export const CLOUD_DEV = process.env.EXPO_PUBLIC_CLOUD_DEV === "1";
+// Which cloud this build talks to comes from app.config.js (`extra.cloudUrl`): production for
+// release builds; none, the dev deployment (KIWIMAKE_CLOUD=dev) or another one for other builds.
+const extra = (Constants.expoConfig?.extra ?? {}) as { cloudUrl?: unknown; cloudName?: unknown };
+export const CONVEX_URL = typeof extra.cloudUrl === "string" ? extra.cloudUrl : (process.env.EXPO_PUBLIC_CONVEX_URL ?? "");
+/** "prod", "dev", "custom" or "off". */
+export const CLOUD_NAME = typeof extra.cloudName === "string" ? extra.cloudName : CONVEX_URL ? "custom" : "off";
+/** Dev builds only: the "Try it without an account" sign-in (the dev deployment's anonymous provider), never on production. */
+export const CLOUD_DEV = process.env.EXPO_PUBLIC_CLOUD_DEV === "1" && CLOUD_NAME !== "prod";
 export const CLOUD_SITE = CONVEX_URL.replace(/\.convex\.cloud\/?$/, ".convex.site");
 /** True when this build can make apps in the cloud. */
 export const cloudAvailable = Boolean(CONVEX_URL);
 
 export const convex = CONVEX_URL ? new ConvexReactClient(CONVEX_URL, { unsavedChangesWarning: false }) : null;
 export const api = anyApi;
+export { cloudMessage };
 
 export const isCloudId = (id: string) => /^[a-z0-9]{32}$/.test(id);
 export const isCloudApp = (app: Pick<App, "id" | "cloud">) => app.cloud?.place === "cloud" || isCloudId(app.id);
@@ -32,21 +40,12 @@ export const authStorage = {
   removeItem: (k: string) => SecureStore.deleteItemAsync(safe(k)),
 };
 
-/** Convex's "[CONVEX M(chat:send)] ... Uncaught Error: <sentence>\n at ..." down to the sentence. */
-export function cloudMessage(e: unknown): string {
-  const raw = e instanceof Error ? e.message : String(e);
-  const m = /Uncaught (?:Error: )?([^\n]+)/.exec(raw);
-  const text = (m?.[1] ?? raw).replace(/\s+at .*$/, "").trim();
-  if (/fetch failed|Network request failed|WebSocket/i.test(text)) return "Can't reach Kiwimake's cloud. Check the phone's internet, then try again.";
-  return text.slice(0, 300);
-}
-
 async function call<T>(fn: () => Promise<T>): Promise<T> {
   if (!convex) throw new ApiError("This build has no cloud.", 0);
   try {
     return await fn();
   } catch (e) {
-    throw new ApiError(cloudMessage(e), /Sign in first/.test(String(e)) ? 401 : 400);
+    throw new ApiError(cloudMessage(e), needsSignIn(e) ? 401 : 400);
   }
 }
 

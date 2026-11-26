@@ -18,6 +18,29 @@
 //   KIWIMAKE_APP_VERSION    another version (MAJOR.MINOR.PATCH; versionCode follows it)
 const { otaRuntimeVersion } = require("./scripts/ota-runtime-version");
 
+// - Kiwimake Cloud (src/lib/cloud.ts, `extra.cloudUrl`): release builds always use production.
+//   Other builds have no cloud unless asked: KIWIMAKE_CLOUD=dev (the dev deployment) or prod, or
+//   EXPO_PUBLIC_CONVEX_URL for any other deployment. `extra.cloudName` says which one it is.
+const CLOUDS = {
+  prod: "https://utmost-deer-505.convex.cloud",
+  dev: "https://perceptive-gnu-478.convex.cloud",
+};
+
+/** The cloud a build talks to: { name, url } (url "" for none). */
+function cloudFor(release, env = process.env) {
+  const pick = env.KIWIMAKE_CLOUD || "";
+  if (pick && pick !== "off" && !(pick in CLOUDS)) throw new Error(`KIWIMAKE_CLOUD must be prod, dev or off, got ${pick}`);
+  const custom = (env.EXPO_PUBLIC_CONVEX_URL || "").replace(/\/+$/, "");
+  if (release) {
+    if ((pick && pick !== "prod") || (custom && custom !== CLOUDS.prod)) throw new Error("A release build always uses the production cloud: unset KIWIMAKE_CLOUD and EXPO_PUBLIC_CONVEX_URL");
+    return { name: "prod", url: CLOUDS.prod };
+  }
+  if (pick === "off") return { name: "off", url: "" };
+  if (pick) return { name: pick, url: CLOUDS[pick] };
+  if (custom) return { name: Object.keys(CLOUDS).find((k) => CLOUDS[k] === custom) || "custom", url: custom };
+  return { name: "off", url: "" };
+}
+
 const OTA_SERVER = (process.env.KIWIMAKE_OTA_SERVER || "https://ota.kiwimake.ai").replace(/\/+$/, "");
 const RELEASE_FEED = process.env.KIWIMAKE_RELEASE_FEED || "https://api.github.com/repos/maddada/Kiwimake/releases/latest";
 
@@ -32,6 +55,7 @@ module.exports = ({ config }) => {
   const pkg = process.env.ANYAPP_ANDROID_PACKAGE;
   const release = process.env.KIWIMAKE_RELEASE === "1";
   const version = process.env.KIWIMAKE_APP_VERSION || config.version;
+  const cloud = cloudFor(release);
   const android = {
     ...config.android,
     ...(pkg ? { package: pkg } : {}),
@@ -48,6 +72,8 @@ module.exports = ({ config }) => {
       // The in-app APK updater (src/lib/appUpdate.ts): only release builds, signed with the release key.
       selfUpdate: release,
       releaseFeed: RELEASE_FEED,
+      cloudName: cloud.name,
+      cloudUrl: cloud.url,
     },
     updates: release
       ? {
@@ -65,3 +91,6 @@ module.exports = ({ config }) => {
       : { enabled: false },
   };
 };
+
+module.exports.cloudFor = cloudFor;
+module.exports.CLOUDS = CLOUDS;

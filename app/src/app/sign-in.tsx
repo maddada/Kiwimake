@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { X } from "lucide-react-native";
 import { CLOUD_DEV, cloudMessage } from "@/lib/cloud";
+import { CODE_FAILED } from "@/lib/cloudError";
 import { handoffCode } from "@/lib/pcLink";
 import { useStore } from "@/lib/store";
 import { Button, IconButton } from "@/ui/Button";
@@ -72,7 +73,8 @@ export default function SignIn() {
     try {
       await fn();
     } catch (e) {
-      setError(cloudMessage(e));
+      // A wrong code: production hides Convex Auth's reason, so say what it almost always is.
+      setError(cloudMessage(e, what === "code" ? CODE_FAILED : undefined));
     } finally {
       setBusy(null);
     }
