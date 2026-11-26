@@ -1,7 +1,7 @@
 // Desktop engines. Discovery and ownership follow Ghostex's agent_cli catalog and launch_path.
 // No imports from Ghostex. Cloud sessions keep their existing provider and model policy.
 import { existsSync, realpathSync, statSync } from "node:fs";
-import { delimiter, dirname, join } from "node:path";
+import { delimiter, dirname, join, posix, win32 } from "node:path";
 
 export * from "./engine-names.mts";
 import type { Engine } from "./engine-names.mts";
@@ -10,23 +10,25 @@ export function engineCandidates(engine: Engine, env: NodeJS.ProcessEnv = proces
   const override = engine === "claude" ? env.CLAUDE_CODE_EXECUTABLE : engine === "codex" ? env.CODEX_EXECUTABLE : env.ANTIGRAVITY_EXECUTABLE;
   if (override) return [override]; // A broken explicit override must not silently run another copy.
   const win = platform === "win32";
+  // Paths for the platform asked about, so the result is the same whatever system computes it.
+  const pjoin = win ? win32.join : posix.join;
   const home = (win ? env.USERPROFILE : env.HOME) ?? env.HOME;
   // The Claude Agent SDK spawns CLAUDE_CODE_EXECUTABLE directly, and Windows cannot spawn a .cmd
   // shim that way, so Claude counts only as an .exe (an npm install's native binary included).
   // Codex runs through cross-spawn, which handles npm's .cmd shims. Antigravity's CLI is `agy`.
   const names = engine === "antigravity" ? [win ? "agy.exe" : "agy"]
-    : !win ? [engine] : engine === "claude" ? ["claude.exe", join("node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe")] : ["codex.exe", "codex.cmd"];
+    : !win ? [engine] : engine === "claude" ? ["claude.exe", pjoin("node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe")] : ["codex.exe", "codex.cmd"];
   const path = Object.entries(env).find(([key]) => key.toLowerCase() === "path")?.[1] ?? "";
   const dirs = path.split(win ? ";" : ":").filter(Boolean).map((p) => p.replace(/^"|"$/g, ""));
   // Session wrappers from another host are not the installed CLI.
   const safeDirs = dirs.filter((p) => !/ghostex[\\/].*session-bin/i.test(p));
-  if (home) safeDirs.push(join(home, ".local", "bin"));
-  if (win && env.LOCALAPPDATA) safeDirs.push(join(env.LOCALAPPDATA, "Programs", "OpenAI", "Codex", "bin"));
+  if (home) safeDirs.push(pjoin(home, ".local", "bin"));
+  if (win && env.LOCALAPPDATA) safeDirs.push(pjoin(env.LOCALAPPDATA, "Programs", "OpenAI", "Codex", "bin"));
   // Where Google's install.ps1 puts agy.exe (install.sh uses ~/.local/bin, added above).
-  if (win && env.LOCALAPPDATA) safeDirs.push(join(env.LOCALAPPDATA, "agy", "bin"));
-  if (win && env.APPDATA) safeDirs.push(join(env.APPDATA, "npm"));
+  if (win && env.LOCALAPPDATA) safeDirs.push(pjoin(env.LOCALAPPDATA, "agy", "bin"));
+  if (win && env.APPDATA) safeDirs.push(pjoin(env.APPDATA, "npm"));
   if (!win) safeDirs.push("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin");
-  return [...new Set(safeDirs.flatMap((dir) => names.map((name) => join(dir, name))))];
+  return [...new Set(safeDirs.flatMap((dir) => names.map((name) => pjoin(dir, name))))];
 }
 
 export function findEngine(engine: Engine, env: NodeJS.ProcessEnv = process.env): string | undefined {

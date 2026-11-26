@@ -1,7 +1,7 @@
 // "Use another account": a new profile of Kiwimake's own, never the shared one (src/main/claude-account.ts).
 import { describe, expect, it } from "vitest";
 import { EventEmitter } from "node:events";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readlinkSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AccountSwitch, SHARED_ENTRIES, accountsRoot, claudeConfigDir, isInside, newProfile, otherProfiles, profileEnv, removeProfile, saveProfile, savedProfile, unlinkShared, useSavedProfile, type SignInLike } from "../src/main/claude-account.ts";
@@ -11,7 +11,8 @@ const unix = process.platform !== "win32";
 
 /** A claude-swap style profile: its own sign-in, and projects/settings linked to ~/.claude. */
 function sharedProfile(): { home: string; swap: string; root: string } {
-  const home = mkdtempSync(join(tmpdir(), "kiwi-acct-"));
+  // The real path: on macOS the temp folder is a link (/var to /private/var), and profiles link to real paths.
+  const home = realpathSync(mkdtempSync(join(tmpdir(), "kiwi-acct-")));
   const dotClaude = join(home, ".claude");
   mkdirSync(join(dotClaude, "projects", "-apps-tea"), { recursive: true });
   writeFileSync(join(dotClaude, "projects", "-apps-tea", "s1.jsonl"), "{}\n");

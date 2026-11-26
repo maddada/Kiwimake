@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { engineCandidates, engineInstaller, engineUpdate } from "../../shared/engines.mts";
 import { detectEngine } from "../src/main/detect/engine.ts";
 import { DEFAULT_SETTINGS, loadSettings, saveSettings } from "../src/main/settings.ts";
@@ -13,20 +13,20 @@ const { keepRuntime } = require("../dev/after-pack.cjs");
 describe("engine discovery and setup choice", () => {
   it("uses Windows PATH before standard folders and excludes host session wrappers", () => {
     const candidates = engineCandidates("codex", { Path: "C:/Ghostex/State/session-bin;C:/chosen", LOCALAPPDATA: "C:/local", USERPROFILE: "C:/person" }, "win32");
-    expect(candidates[0]).toBe(join("C:/chosen", "codex.exe"));
+    expect(candidates[0]).toBe(win32.join("C:/chosen", "codex.exe"));
     expect(candidates.some((p) => p.includes("session-bin"))).toBe(false);
-    expect(candidates).toContain(join("C:/local", "Programs", "OpenAI", "Codex", "bin", "codex.exe"));
+    expect(candidates).toContain(win32.join("C:/local", "Programs", "OpenAI", "Codex", "bin", "codex.exe"));
   });
   it("on Windows counts Claude only as an executable the SDK can spawn, npm's native binary included", () => {
     const candidates = engineCandidates("claude", { Path: "C:/npm", USERPROFILE: "C:/person" }, "win32");
     expect(candidates.every((p) => p.endsWith("claude.exe"))).toBe(true);
-    expect(candidates).toContain(join("C:/npm", "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe"));
-    expect(candidates).toContain(join("C:/person", ".local", "bin", "claude.exe"));
-    expect(engineCandidates("codex", { Path: "C:/npm" }, "win32")).toContain(join("C:/npm", "codex.cmd"));
+    expect(candidates).toContain(win32.join("C:/npm", "node_modules", "@anthropic-ai", "claude-code", "bin", "claude.exe"));
+    expect(candidates).toContain(win32.join("C:/person", ".local", "bin", "claude.exe"));
+    expect(engineCandidates("codex", { Path: "C:/npm" }, "win32")).toContain(win32.join("C:/npm", "codex.cmd"));
   });
   it("uses Unix HOME and searches a GUI app's missing PATH locations", () => {
-    expect(engineCandidates("claude", { HOME: "/home/a", USERPROFILE: "/wrong" }, "linux")).toContain(join("/home/a", ".local", "bin", "claude"));
-    expect(engineCandidates("codex", {}, "darwin")).toContain(join("/opt/homebrew/bin", "codex"));
+    expect(engineCandidates("claude", { HOME: "/home/a", USERPROFILE: "/wrong" }, "linux")).toContain(posix.join("/home/a", ".local", "bin", "claude"));
+    expect(engineCandidates("codex", {}, "darwin")).toContain(posix.join("/opt/homebrew/bin", "codex"));
   });
   it("never replaces a bad explicit override with a different account's executable", () => {
     expect(engineCandidates("codex", { CODEX_EXECUTABLE: "/missing", PATH: "/bin" }, "linux")).toEqual(["/missing"]);

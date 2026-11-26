@@ -152,7 +152,8 @@ describe("OpenCode's config and names", () => {
       expect(launch.args).toEqual([...prefix.slice(1), "env", `OPENCODE_CONFIG=${configPath}`, "OPENCODE_DISABLE_AUTOUPDATE=1", "OPENCODE_DISABLE_FREE_MODELS=1", "opencode", "acp"]);
       expect(env).toEqual({});
       expect(configPath.startsWith(dir)).toBe(true);
-      expect(statSync(configPath).mode & 0o777).toBe(0o640);
+      // Unix modes only: Windows has none (the cloud runs OpenCode on Linux).
+      if (process.platform !== "win32") expect(statSync(configPath).mode & 0o777).toBe(0o640);
       expect(JSON.parse(readFileSync(configPath, "utf8")).model).toBe(OPENCODE_DEFAULT_MODEL);
       const local = opencodeLaunch({ ...settings, configDir: dir }, { model: OPENCODE_DEFAULT_MODEL, effort: "high" }, [], [], "/unused");
       expect(local.launch).toEqual({ command: "opencode", args: ["acp"] });
