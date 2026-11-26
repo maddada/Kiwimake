@@ -123,6 +123,8 @@ describe("OpenCode's config and names", () => {
   it("knows a failing provider: refused at once, or retried by OpenCode", () => {
     expect(isOpencodeProviderError(new Error('Internal error: Insufficient credits: {"service":"session","errorName":"provider.quota"}'))).toBe(true);
     expect(isOpencodeProviderError(new Error("The agent session is not running"))).toBe(false);
+    // A key the provider refuses (seen live from OpenRouter, 27 Nov 2026).
+    expect(isOpencodeProviderError(new Error("Authentication required: provider authentication required: {}"))).toBe(true);
     const retry = (attempt: number) => ({ sessionUpdate: "session_info_update", _meta: { "opencode/retry": { attempt, error: { type: "provider.internal", status: 503 } } } });
     expect(opencodeProviderTrouble(retry(2))).toBeUndefined();
     expect(opencodeProviderTrouble(retry(3))).toBe("provider.internal 503, 3 tries");

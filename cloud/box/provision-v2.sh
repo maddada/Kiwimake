@@ -10,6 +10,8 @@ set -euo pipefail
 OPENCODE_VERSION=2.4.1
 
 sudo mkdir -p /opt/npm
+# The agent-browser template ships an old opencode (opencode-ai 1.19.5) at /opt/npm/bin/opencode: it goes first.
+sudo npm uninstall --global --prefix /opt/npm --loglevel=error opencode-ai || true
 sudo npm install --global --prefix /opt/npm --no-audit --no-fund --loglevel=error "@opencode/cli@${OPENCODE_VERSION}"
 got=$(sudo -n -u agent -H /opt/kiwi/agent.sh opencode --version | tr -d '\r' | tail -n 1)
 case "$got" in *"$OPENCODE_VERSION"*) echo "opencode $got for the agent" ;; *) echo "the agent sees opencode '$got', not $OPENCODE_VERSION" >&2; exit 1 ;; esac

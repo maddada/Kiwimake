@@ -79,7 +79,8 @@ export function opencodeProviderTrouble(update: unknown, retries = OPENCODE_RETR
  */
 export function isOpencodeProviderError(error: unknown): boolean {
   const text = error instanceof Error ? error.message : String(error);
-  return /"errorName"\s*:\s*"provider\./.test(text) || /ProviderModelNotFound|ProviderInitError|ECONNREFUSED|ENOTFOUND/.test(text);
+  // A key the provider refuses (401: wrong, revoked) comes back as ACP's "Authentication required".
+  return /"errorName"\s*:\s*"provider\./.test(text) || /ProviderModelNotFound|ProviderInitError|ECONNREFUSED|ENOTFOUND|provider authentication required/i.test(text);
 }
 
 export function opencodeProfile(mcpServers: unknown[] = [], models: string[] = []): AcpAgentProfile {
