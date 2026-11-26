@@ -1,0 +1,9 @@
+{
+  "name": "kiwimake-backups",
+  "private": true,
+  "type": "module",
+  "description": "The private repo that runs Kiwimake Cloud's daily Convex backup (copy of cloud/backup).",
+  "dependencies": {
+    "convex": "1.49.0"
+  }
+}
