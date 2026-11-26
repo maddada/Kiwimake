@@ -1,4 +1,4 @@
-// Running on Convex Starter (docs/CLOUD.md section 4, "Convex Starter"): errors go to Sentry
+// Running on Convex Starter (docs/CLOUD.md section 3, "Running on Convex Starter"): errors go to Sentry
 // ourselves (scrubbed), an uptime check, and the deployment's own address carrying Google's
 // verification tag.
 import { convexTest } from 'convex-test';

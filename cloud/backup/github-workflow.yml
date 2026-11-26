@@ -1,5 +1,5 @@
-# The daily backup of Kiwimake Cloud's production Convex deployment (docs/CLOUD.md section 4,
-# "Backups on Convex Starter"). This file goes to .github/workflows/convex-backup.yml in the
+# The daily backup of Kiwimake Cloud's production Convex deployment (docs/CLOUD.md section 3,
+# "Running on Convex Starter"). This file goes to .github/workflows/convex-backup.yml in the
 # PRIVATE backups repo, next to a copy of kiwi-backup.mjs and package.json (see README.md here).
 #   Secret   CONVEX_PROD_EXPORT_KEY  a production deploy key that may export data
 #   Variable BACKUP_PUBLIC_KEY       KWBK-PUBLIC-1:... from `node kiwi-backup.mjs keygen`

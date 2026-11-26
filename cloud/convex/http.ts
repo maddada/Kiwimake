@@ -32,7 +32,7 @@ http.route({ pathPrefix: '/page/', method: 'POST', handler: pageRoute });
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
-// For an uptime monitor (docs/CLOUD.md section 4): answers only when the deployment reads its database.
+// For an uptime monitor (docs/CLOUD.md section 3, "Running on Convex Starter"): answers only when the deployment reads its database.
 http.route({
   path: '/health',
   method: 'GET',

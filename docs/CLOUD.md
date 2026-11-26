@@ -524,6 +524,40 @@ runs no agent and no build: its actions only call the box provider, GitHub, Stri
 service (the AI calls go from the box, with the key added by the Secrets proxy), and its HTTP actions are what the box and Stripe call.
 Deployment in **US East** (standard price; Instabox is in the US anyway).
 
+### Running on Convex Starter (added 2026-11-27)
+
+The user's decision: production stays on **Convex Starter** (usage based, $0 a month plus usage),
+not Professional. Four things Starter lacks, from Convex's docs (quotes in section 8), and what we
+do instead:
+
+| Pro only on Convex | What Kiwimake does on Starter | Where |
+| --- | --- | --- |
+| Periodic backups ("Periodic backups require a Convex Pro plan") | Our own daily backup: a GitHub Actions job in a **private** repo runs `npx convex export` at 03:17 UTC, checks the export has the `users`, `apps` and `keys` tables, encrypts it to a backup public key (X25519, HKDF-SHA256, AES-256-GCM in 1 MiB chunks) and keeps it as a release. Kept **30 days**; the newest 7 always stay. File storage is left out by default (builds come again from each app's repo). | `cloud/backup/` |
+| Custom domains ("Custom domains require a Convex Pro plan") | Every HTTP route stays on the deployment's own `https://<prod>.convex.site` address: the GitHub App callback and webhook, the Stripe webhook, Google's sign-in redirect, the runner and PC routes, public pages. `GET /` there is a small page linking to kiwimake.ai and can carry Google's site verification tag (`GOOGLE_SITE_VERIFICATION`), so Search Console can verify that address for the Google sign-in brand check. | `cloud/convex/http.ts` |
+| Exception reporting ("only available to Pro users") and log streams ("Log streams require a Convex Pro plan") | Caught failures in the runner and PC routes and the box actions go to **Sentry** ourselves, with fetch to its envelope API (no SDK), scrubbed of anything shaped like a key, token or email address. Queries and mutations, which cannot fetch, schedule `internal.errors.report`. Nothing is sent without `SENTRY_DSN`. The dashboard's own logs stay as they are. | `cloud/convex/lib/errors.ts`, `cloud/convex/errors.ts` |
+| (No uptime alerts on any plan) | `GET /health` reads one row and answers `{ok:true}` or 503, for an uptime monitor (UptimeRobot's free plan, every 5 minutes). | `cloud/convex/health.ts` |
+
+**How long data stays in backups:** at most **30 days** in our releases (`BACKUP_KEEP_DAYS`), and
+each export also leaves a snapshot in the Convex dashboard that Convex keeps for up to 7 days ("On
+the Free/Starter plan, up to two backups can stored per deployment at a time"). The privacy page's
+backup days say 30.
+
+**Restoring:** download the `.kwb`, `node kiwi-backup.mjs restore --key <file> --in <kwb> --out
+snapshot.zip`, take a fresh backup of the target first, then `npx convex import --replace-all
+snapshot.zip`. The private key lives only in 1Password ("Kiwimake Cloud backup key").
+
+**Starter's limits to watch** (https://www.convex.dev/pricing): 1M function calls included then $2.20
+per million, 0.5 GB database, 1 GB files, 1 GB egress then $0.132 a GB, 20 GB-hours of actions, and
+deployment class S16: 1,000 concurrent sessions, and at a time 16 queries, 16 mutations, 64 actions
+and HTTP actions, 8 scheduled jobs (https://docs.convex.dev/production/state/limits).
+Moving to Professional later changes none of the code: turn on periodic backups and Convex's own
+exception reporting, point a custom domain at the HTTP actions and update the callback URLs.
+
+**Settings (Convex environment variables):** `SENTRY_DSN`, `SENTRY_ENVIRONMENT` (default
+`production`), `SENTRY_RELEASE` (optional), `GOOGLE_SITE_VERIFICATION` (the token from Search
+Console's HTML tag method). In the backups repo: the secret `CONVEX_PROD_EXPORT_KEY` (a production
+deploy key) and the variable `BACKUP_PUBLIC_KEY`.
+
 ### The code lives on the person's GitHub
 
 We do not store code. Each cloud app has a **private repo `anyapp-cloud-<slug>`** on the person's
@@ -1003,7 +1037,7 @@ signing, never where the agent can read it. It is not code and never goes to Git
 - The person's own Anthropic key and their GitHub refresh token are stored the same way in
   `secrets`; Settings shows the last 4 characters of the AI key.
 - "Never lost" also needs the master key never lost: the key service never destroys its versions,
-  Convex backups cover the rows, and the owner keeps a sealed offline copy of an exported wrapping
+  our own daily encrypted backups cover the rows (section 3, "Running on Convex Starter"), and the owner keeps a sealed offline copy of an exported wrapping
   key.
 
 **Where a key is made and used:**
@@ -1300,6 +1334,19 @@ active API keys. Team adds capacity and SLA support; it is not required just to 
   developer a month (25M calls, 50 GB database, 100 GB files, 50 GB egress). Serving files counts as
   egress ($0.132 a GB above the allowance on Starter, $0.12 on Professional). Outside US East, 1.3
   times the price.
+- **Starter versus Professional for production** (checked 27 Nov 2026): the pricing page lists
+  Log streaming, Exception reporting, Daily backups, Custom domains, Streaming data exports and the
+  Management API as Professional only. The docs: "Periodic backups require a Convex Pro plan";
+  "Daily backups are stored for 7 days. Weekly backups are stored for 14 days" (Pro);
+  "Manual backups are stored for 7 days"; "On the Free/Starter plan, up to two backups can stored
+  per deployment at a time" (https://docs.convex.dev/database/backup-restore); "Custom domains
+  require a Convex Pro plan" (https://docs.convex.dev/production/custom-domains); "Log streams
+  require a Convex Pro plan" (https://docs.convex.dev/production/integrations/log-streams);
+  "Currently, exception reporting is only available to Pro users"
+  (https://docs.convex.dev/production/integrations/exception-reporting); "Streaming export
+  requires a Convex Pro plan", while "Streaming import is included with all Convex plans". Snapshot
+  export (`npx convex export`) works on Starter: proven three times in a row on our dev deployment
+  (about 3 s, 36 tables). What we do instead: section 3, "Running on Convex Starter".
 - **Files** (https://docs.convex.dev/file-storage/upload-files): "The file size is not limited, but
   upload POST request has a 2 minute timeout" (fine from a box; a 30 MB APK needs about 2 Mbit/s).
   `getUrl()` gives a URL "anyone with the URL can access" until the file is deleted.

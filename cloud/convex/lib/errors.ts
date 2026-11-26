@@ -1,4 +1,4 @@
-// Error reporting to Sentry on Convex Starter (docs/CLOUD.md section 4, "Convex Starter"). Convex's
+// Error reporting to Sentry on Convex Starter (docs/CLOUD.md section 3, "Running on Convex Starter"). Convex's
 // own exception reporting "is only available to Pro users", so failures we catch in HTTP actions
 // and actions are sent to Sentry's envelope endpoint ourselves, with fetch (no SDK): the message,
 // the stack, where it happened and a few tags. Never request bodies, headers, keys or tokens: the

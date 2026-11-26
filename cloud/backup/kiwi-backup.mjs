@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Kiwimake Cloud's own daily backup (docs/CLOUD.md section 4, "Backups on Convex Starter").
+// Kiwimake Cloud's own daily backup (docs/CLOUD.md section 3, "Running on Convex Starter").
 // Convex Starter has no periodic backups ("Periodic backups require a Convex Pro plan"; a manual
 // backup is "stored for 7 days", at most two per deployment), so this exports the production
 // deployment with Convex's own `npx convex export` (the same ZIP a backup is, and what
