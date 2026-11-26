@@ -177,7 +177,7 @@ describe('Stripe (a fake)', () => {
 
   test('extra credit: 20 credits for 12 months, once per payment; a forged event is refused', async () => {
     const { t, userId, balance } = await setup();
-    const ev = { id: 'evt_1', type: 'checkout.session.completed', data: { object: { id: 'cs_1', mode: 'payment', payment_status: 'paid', payment_intent: 'pi_1', metadata: { kind: 'extra', userId } } } };
+    const ev = { id: 'evt_1', type: 'checkout.session.completed', data: { object: { id: 'cs_1', mode: 'payment', payment_status: 'paid', payment_intent: 'pi_1', metadata: { app: 'kiwimake', kind: 'extra', userId } } } };
     expect((await send(t, ev, 'whsec_wrong')).status).toBe(400);
     expect((await send(t, ev)).status).toBe(200);
     expect((await send(t, { ...ev, id: 'evt_1b' })).status).toBe(200);
@@ -186,7 +186,7 @@ describe('Stripe (a fake)', () => {
 
   test('a monthly plan: each paid invoice gives its credits (one month of rollover); cancelled goes back to Free', async () => {
     const { t, userId, balance } = await setup();
-    await send(t, { id: 'e1', type: 'checkout.session.completed', data: { object: { mode: 'subscription', subscription: 'sub_1', metadata: { kind: 'plan', userId, plan: 'starter', interval: 'month' } } } });
+    await send(t, { id: 'e1', type: 'checkout.session.completed', data: { object: { mode: 'subscription', subscription: 'sub_1', metadata: { app: 'kiwimake', kind: 'plan', userId, plan: 'starter', interval: 'month' } } } });
     await send(t, { id: 'e2', type: 'invoice.paid', data: { object: { id: 'in_1', subscription: 'sub_1', lines: { data: [{ period: { start: Date.now() / 1000, end: Date.now() / 1000 + 30 * 86400 } }] } } } });
     expect(await balance()).toBe(33);
     const g = (await t.run((ctx) => ctx.db.query('grants').filter((q) => q.eq(q.field('source'), 'plan')).first()))!;
@@ -196,9 +196,21 @@ describe('Stripe (a fake)', () => {
     expect(sub).toMatchObject({ plan: 'free', status: 'cancelled' });
   });
 
+  test('the shared Stripe account: events of another app (Sharptabs) or untagged ones change nothing', async () => {
+    const { t, userId, balance } = await setup();
+    const before = await balance();
+    // Sharptabs' own shapes: metadata { plan, userId } with no app tag, and invoices of its subscriptions.
+    await send(t, { id: 's1', type: 'checkout.session.completed', data: { object: { mode: 'subscription', subscription: 'sub_st', metadata: { plan: '12months', userId } } } });
+    await send(t, { id: 's2', type: 'checkout.session.completed', data: { object: { mode: 'payment', payment_status: 'paid', payment_intent: 'pi_st', metadata: { kind: 'extra', userId } } } });
+    await send(t, { id: 's3', type: 'invoice.paid', data: { object: { id: 'in_st', subscription: 'sub_st', subscription_details: { metadata: { userId, plan: 'max', interval: 'month' } }, lines: { data: [{ period: { start: Date.now() / 1000, end: Date.now() / 1000 + 30 * 86400 } }] } } } });
+    await send(t, { id: 's4', type: 'checkout.session.completed', data: { object: { mode: 'payment', payment_status: 'paid', payment_intent: 'pi_x', metadata: { app: 'sharptabs', kind: 'extra', userId } } } });
+    expect(await balance()).toBe(before);
+    expect(await t.run((ctx) => ctx.db.query('subscriptions').filter((q) => q.eq(q.field('stripeSubscriptionId'), 'sub_st')).first())).toBeNull();
+  });
+
   test('a yearly plan: credits given monthly, by the hourly job', async () => {
     const { t, userId, balance } = await setup();
-    await send(t, { id: 'y1', type: 'checkout.session.completed', data: { object: { mode: 'subscription', subscription: 'sub_y', metadata: { kind: 'plan', userId, plan: 'pro', interval: 'year' } } } });
+    await send(t, { id: 'y1', type: 'checkout.session.completed', data: { object: { mode: 'subscription', subscription: 'sub_y', metadata: { app: 'kiwimake', kind: 'plan', userId, plan: 'pro', interval: 'year' } } } });
     await send(t, { id: 'y2', type: 'invoice.paid', data: { object: { id: 'in_y', subscription: 'sub_y', lines: { data: [{ period: { start: Date.now() / 1000, end: Date.now() / 1000 + 365 * 86400 } }] } } } });
     expect(await balance()).toBe(73);
     vi.setSystemTime(new Date('2026-12-12T11:00:00Z'));

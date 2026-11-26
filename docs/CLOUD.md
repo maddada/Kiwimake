@@ -910,6 +910,18 @@ yearly plans $3.78, $7.55, $17.70 and $2.04 a year (2.9% plus 30 cents, a US car
 international cards). A failed renewal moves the subscription
 to "pastDue": its next grant waits, credits already given stay.
 
+**One Stripe account with Sharptabs** (the owner's decision, 26 Nov 2026): Kiwimake sells through
+the owner's existing Stripe account, the one Sharptabs uses, without touching anything of
+Sharptabs'. Everything Kiwimake makes there carries metadata `app=kiwimake`: its customers,
+checkout sessions, subscriptions, its own Products and Prices (found by lookup key,
+`kiwimake_<plan>_<month|year>` and `kiwimake_extra_20`, made once from `config.ts` by
+`cloud/scripts/stripe-setup.mjs`), its own webhook endpoint and its own customer portal
+configuration. A Stripe account sends every event to every endpoint, so Kiwimake's webhook
+ignores anything not tagged `app=kiwimake` (Sharptabs' own handler already skips customers it
+does not know). The deployment keeps a restricted key (Customers, Checkout Sessions and Customer
+portal write; Prices and Subscriptions read); products, prices and the webhook are made with a
+temporary key that is deleted afterwards. One-off payments add `KIWIMAKE` to the card statement.
+
 **Who pays nothing**: an account that never pays gets its 3 free credits a month and nothing more.
 Storage is free.
 

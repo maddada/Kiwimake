@@ -4,6 +4,11 @@
 // into grants: invoice.paid gives a plan's monthly credits (a yearly plan's later months come
 // from an hourly job), checkout.session.completed gives extra credit. Card fees are inside our
 // prices; nothing is added at checkout.
+//
+// The Stripe account is shared with another app (Sharptabs), so everything Kiwimake makes there
+// carries metadata app=kiwimake, checkout uses Kiwimake's own Prices (found by lookup key, made
+// once by scripts/stripe-setup.mjs) instead of making a new product per payment, and the webhook
+// leaves alone any event that is not Kiwimake's.
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
@@ -15,11 +20,30 @@ import { hmacSha256B64, sameHex } from './lib/crypto';
 
 const API = 'https://api.stripe.com/v1';
 
+/** The tag on everything Kiwimake makes in the shared Stripe account. */
+export const APP_TAG = { app: 'kiwimake' } as const;
+/** Kiwimake's Prices in Stripe, by lookup key (scripts/stripe-setup.mjs makes them from config.ts). */
+export function lookupKey(item: { plan: Exclude<PlanId, 'free'>; interval: Interval } | 'extra'): string {
+  return item === 'extra' ? 'kiwimake_extra_20' : `kiwimake_${item.plan.toLowerCase()}_${item.interval}`;
+}
+/** Shown on the card statement after the account's own short descriptor (one-off payments). */
+const DESCRIPTOR_SUFFIX = 'KIWIMAKE';
+
+async function priceId(key: string, wantCents: number): Promise<string> {
+  const r = await stripe<{ data: { id: string; unit_amount: number; currency: string }[] }>('GET', `/prices?active=true&limit=1&lookup_keys[]=${encodeURIComponent(key)}`);
+  const p = r.data[0];
+  if (!p) throw new Error('Payments are not set up yet.');
+  // A Price that no longer matches config.ts must never charge a different amount than the app shows.
+  if (p.unit_amount !== wantCents || p.currency !== 'usd') throw new Error('Payments are being updated. Please try again later.');
+  return p.id;
+}
+
 function secretKey(): string {
   const k = process.env.STRIPE_SECRET_KEY ?? '';
   if (!k) throw new Error('Payments are not set up yet.');
   // Test mode only until launch: a live key is refused here.
-  if (!k.startsWith('sk_test_') && process.env.STRIPE_ALLOW_LIVE !== '1') throw new Error('Only a Stripe test key may be used here.');
+  // A restricted key (rk_) is preferred: the account is shared, so Kiwimake's key can do only what Kiwimake needs.
+  if (!/^(sk|rk)_test_/.test(k) && process.env.STRIPE_ALLOW_LIVE !== '1') throw new Error('Only a Stripe test key may be used here.');
   return k;
 }
 
@@ -47,6 +71,16 @@ export async function stripe<T = any>(method: 'GET' | 'POST' | 'DELETE', path: s
   return json;
 }
 
+async function customerAlive(id: string): Promise<boolean> {
+  try {
+    const c = await stripe<{ deleted?: boolean }>('GET', `/customers/${encodeURIComponent(id)}`);
+    return !c.deleted;
+  } catch (e) {
+    if (/No such customer/i.test((e as Error).message)) return false;
+    throw e;
+  }
+}
+
 export const userRow = internalQuery({
   args: { userId: v.id('users') },
   handler: async (ctx, { userId }) => ctx.db.get(userId),
@@ -70,8 +104,10 @@ export const checkout = action({
     if (!userId) throw new Error('Sign in first.');
     const user = (await ctx.runQuery(internal.stripe.userRow, { userId }))!;
     let customer = user.stripeCustomerId;
+    // A customer from another Stripe account (the dev deployment moved accounts) or one deleted at Stripe is made again.
+    if (customer && !(await customerAlive(customer))) customer = undefined;
     if (!customer) {
-      const c = await stripe<{ id: string }>('POST', '/customers', { ...(user.email ? { email: user.email } : {}), metadata: { userId } });
+      const c = await stripe<{ id: string }>('POST', '/customers', { ...(user.email ? { email: user.email } : {}), metadata: { ...APP_TAG, userId } });
       customer = c.id;
       await ctx.runMutation(internal.stripe.setCustomer, { userId, customerId: customer });
     }
@@ -82,9 +118,9 @@ export const checkout = action({
         mode: 'payment',
         customer,
         ...done,
-        line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: EXTRA_PACK.cents, product_data: { name: `Kiwimake extra credit (${EXTRA_PACK.millicredits / 1000} credits)` } } }],
-        metadata: { kind: 'extra', userId },
-        payment_intent_data: { metadata: { kind: 'extra', userId } },
+        line_items: [{ quantity: 1, price: await priceId(lookupKey('extra'), EXTRA_PACK.cents) }],
+        metadata: { ...APP_TAG, kind: 'extra', userId },
+        payment_intent_data: { metadata: { ...APP_TAG, kind: 'extra', userId }, statement_descriptor_suffix: DESCRIPTOR_SUFFIX },
       });
       return { url: s.url };
     }
@@ -95,9 +131,9 @@ export const checkout = action({
       mode: 'subscription',
       customer,
       ...done,
-      line_items: [{ quantity: 1, price_data: { currency: 'usd', unit_amount: p.cents[interval], recurring: { interval }, product_data: { name: `Kiwimake ${p.name}${interval === 'year' ? ', yearly' : ''}` } } }],
-      metadata: { kind: 'plan', userId, plan, interval },
-      subscription_data: { metadata: { userId, plan, interval } },
+      line_items: [{ quantity: 1, price: await priceId(lookupKey({ plan, interval }), p.cents[interval]) }],
+      metadata: { ...APP_TAG, kind: 'plan', userId, plan, interval },
+      subscription_data: { metadata: { ...APP_TAG, userId, plan, interval } },
     });
     return { url: s.url };
   },
@@ -138,12 +174,13 @@ async function portalConfiguration(ctx: ActionCtx): Promise<string> {
       invoice_history: { enabled: true },
       customer_update: { enabled: true, allowed_updates: ['email', 'name', 'address'] },
     },
-    metadata: { kiwimake: `portal-v${PORTAL_VERSION}` },
+    metadata: { ...APP_TAG, kiwimake: `portal-v${PORTAL_VERSION}` },
   });
   await ctx.runMutation(internal.stripe.setMeta, { key: 'stripePortal', value: { id: c.id, version: PORTAL_VERSION } });
   return c.id;
 }
-const PORTAL_VERSION = 1;
+// 2: the shared account (26 Nov 2026), so the id remembered from the old test account is not reused.
+const PORTAL_VERSION = 2;
 
 export const metaValue = internalQuery({
   args: { key: v.string() },
@@ -227,8 +264,12 @@ export const apply = internalMutation({
   args: { type: v.string(), object: v.any() },
   handler: async (ctx, { type, object: o }) => {
     const now = Date.now();
+    // The account is shared: an object tagged for another app is never ours.
+    const tag = (o?.metadata ?? o?.subscription_details?.metadata ?? o?.parent?.subscription_details?.metadata ?? {}).app;
+    if (tag !== undefined && tag !== APP_TAG.app) return;
     if (type === 'checkout.session.completed') {
       const m = (o.metadata ?? {}) as Record<string, string>;
+      if (m.app !== APP_TAG.app) return;
       const userId = ctx.db.normalizeId('users', m.userId ?? '');
       if (!userId) return;
       if (m.kind === 'extra' && o.payment_status === 'paid') {
@@ -248,6 +289,8 @@ export const apply = internalMutation({
       const meta = (o.subscription_details?.metadata ?? o.parent?.subscription_details?.metadata ?? o.lines?.data?.[0]?.metadata ?? {}) as Record<string, string>;
       let sub = await subByStripe(ctx, subId);
       if (!sub) {
+        // Only a subscription Kiwimake made (tagged) may create a plan here; others' invoices are not ours.
+        if (meta.app !== APP_TAG.app) return;
         const userId = ctx.db.normalizeId('users', meta.userId ?? '');
         if (!userId) return;
         sub = await upsertPlan(ctx, userId, subId, meta.plan as PlanId, (meta.interval as Interval) ?? 'month', now);
