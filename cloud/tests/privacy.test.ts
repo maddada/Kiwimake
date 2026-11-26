@@ -319,3 +319,39 @@ describe('downloads', () => {
     ]);
   });
 });
+
+describe('sign-ups that never finished', () => {
+  test('a day after asking for a code and never using it, the address goes; finished, busy and fresh ones stay', async () => {
+    const { t, userId } = await setup();
+    // An address that asked for a code and never used it (Convex Auth made its rows at once).
+    const stub = async (email: string, codeFor: number) =>
+      t.run(async (ctx) => {
+        const id = await ctx.db.insert('users', { email });
+        const accountId = await ctx.db.insert('authAccounts', { userId: id, provider: 'resend-otp', providerAccountId: email });
+        await ctx.db.insert('authVerificationCodes', { accountId, provider: 'resend-otp', code: `hash-${email}`, expirationTime: Date.now() + codeFor, emailVerified: email });
+        return { id, accountId };
+      });
+    const gone = await stub('never@example.com', 10 * MIN);
+    const back = await stub('back@example.com', 10 * MIN);
+    const finished = await t.run((ctx) => ctx.db.insert('users', { email: 'done@example.com', emailVerificationTime: Date.now() }));
+    vi.setSystemTime(Date.now() + DAY + 60 * MIN);
+    // Someone back to finish right now: a fresh code is running for them.
+    await t.run((ctx) => ctx.db.insert('authVerificationCodes', { accountId: back.accountId, provider: 'resend-otp', code: 'hash-again', expirationTime: Date.now() + 10 * MIN, emailVerified: 'back@example.com' }));
+    const fresh = await stub('fresh@example.com', 10 * MIN);
+
+    expect(await t.mutation(internal.privacy.sweepUnverified, {})).toEqual({ removed: 1 });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    const left = await t.run(async (ctx) => ({
+      users: (await ctx.db.query('users').collect()).map((u) => u._id),
+      accounts: (await ctx.db.query('authAccounts').collect()).map((a) => a._id),
+      codes: (await ctx.db.query('authVerificationCodes').collect()).map((c) => c.accountId),
+    }));
+    expect(left.users).not.toContain(gone.id);
+    expect(left.accounts).not.toContain(gone.accountId);
+    expect(left.codes).not.toContain(gone.accountId);
+    // The account with GitHub (no verified email in this test), the finished one, the one coming back, and the fresh one.
+    expect(left.users).toEqual(expect.arrayContaining([userId, finished, back.id, fresh.id]));
+    // Nothing more the next run.
+    expect(await t.mutation(internal.privacy.sweepUnverified, {})).toEqual({ removed: 0 });
+  });
+});

@@ -14,4 +14,6 @@ crons.interval('yearly plan grants', { hours: 1 }, internal.stripe.yearlyGrants,
 // past their grace period hourly; old build files daily.
 crons.interval('privacy sweep', { hours: 1 }, internal.privacy.sweep, {});
 crons.daily('old build files', { hourUTC: 0, minuteUTC: 25 }, internal.privacy.sweepBuilds, {});
+// Sign-ups that never finished (an email code asked for, never used), a day after.
+crons.daily('unfinished sign-ups', { hourUTC: 0, minuteUTC: 35 }, internal.privacy.sweepUnverified, {});
 export default crons;

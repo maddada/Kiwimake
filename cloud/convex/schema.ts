@@ -49,6 +49,8 @@ export default defineSchema({
   })
     .index('email', ['email'])
     .index('phone', ['phone'])
+    // Sign-ups that never finished (privacy.ts sweepUnverified): no verified email yet.
+    .index('by_email_verified', ['emailVerificationTime'])
     .index('by_github_installation', ['githubInstallationId'])
     .index('by_github_user', ['githubUserId']),
 

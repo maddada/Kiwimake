@@ -337,6 +337,51 @@ export const deleteAccount = mutation({
   },
 });
 
+/** How old an unfinished sign-up may get before it goes (sweepUnverified). */
+export const UNVERIFIED_KEEP_MS = DAY;
+
+/**
+ * Sign-ups that never finished: asking for an email code makes a user row at once (Convex Auth),
+ * so an address nobody confirmed would stay. A day later such a row goes, through the same
+ * deletion as "Delete my account" (its login rows and old codes with it). Only rows with nothing
+ * else: no verified email or phone, no session, no GitHub, no plan or customer, no apps, no PC.
+ * Daily (crons.ts); at most 200 a run, the rest the next day.
+ */
+export const sweepUnverified = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const cutoff = Date.now() - UNVERIFIED_KEEP_MS;
+    const candidates = await ctx.db
+      .query('users')
+      .withIndex('by_email_verified', (q) => q.eq('emailVerificationTime', undefined))
+      .filter((q) => q.lt(q.field('_creationTime'), cutoff))
+      .take(200);
+    let removed = 0;
+    for (const u of candidates) {
+      if (!u.email || u.phoneVerificationTime || u.isAnonymous || u.deletingAt) continue;
+      if (u.githubLogin || u.githubInstallationId || u.stripeCustomerId || u.cloudSince) continue;
+      const busy =
+        (await ctx.db.query('authSessions').withIndex('userId', (q) => q.eq('userId', u._id)).first()) ||
+        (await ctx.db.query('apps').withIndex('by_user', (q) => q.eq('userId', u._id)).first()) ||
+        (await ctx.db.query('subscriptions').withIndex('by_user', (q) => q.eq('userId', u._id)).first()) ||
+        (await ctx.db.query('pcLinks').withIndex('by_user', (q) => q.eq('userId', u._id)).first());
+      if (busy) continue;
+      // Someone back to finish signing in right now: their code still runs, so not this time.
+      let codeLive = false;
+      for (const a of await ctx.db.query('authAccounts').withIndex('userIdAndProvider', (q) => q.eq('userId', u._id)).collect()) {
+        const codes = await ctx.db.query('authVerificationCodes').withIndex('accountId', (q) => q.eq('accountId', a._id)).collect();
+        if (codes.some((c) => c.expirationTime > Date.now())) codeLive = true;
+      }
+      if (codeLive) continue;
+      await ctx.db.patch(u._id, { deletingAt: Date.now() });
+      await ctx.scheduler.runAfter(0, internal.privacy.deleteAccountRun, { userId: u._id });
+      removed++;
+    }
+    if (removed) console.log(`unfinished sign-ups: ${removed} removed`);
+    return { removed };
+  },
+});
+
 export const accountState = internalQuery({
   args: { userId: v.id('users') },
   handler: async (ctx, { userId }) => {
