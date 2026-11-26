@@ -1,4 +1,4 @@
-// The cloud's engine (docs/CLOUD.md, "The cloud's engine"): Claude by default, opencode with
+// The cloud's engine (docs/CLOUD.md section 3, "OpenCode, a second cloud engine"): Claude by default, opencode with
 // DeepSeek when the deployment says so; the Own key plan always Claude; DeepSeek priced at its
 // peak list price; the box's proxy Secret and the runner's environment follow the engine.
 import { convexTest } from 'convex-test';

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The box image v2 (docs/CLOUD.md, "The cloud's engine"), on top of anyapp-box-v1: run on a box made
+# The box image v2 (docs/CLOUD.md section 3, "OpenCode, a second cloud engine"), on top of anyapp-box-v1: run on a box made
 # from v1 as its login user, then save the box as `anyapp-box-v2`
 # (`node cloud/scripts/box.mjs snapshot <id> anyapp-box-v2`) and set BOX_IMAGE_SNAPSHOT=anyapp-box-v2
 # on the Convex deployment. It adds opencode (the cloud's second engine, `opencode acp`) where the

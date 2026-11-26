@@ -44,7 +44,7 @@ export const OWN_KEY_EXTRA_MILLICREDITS_PER_HOUR = 500;
  * off-peak; we always price at its peak rate (01:00 to 04:00 and 06:00 to 10:00 UTC on weekdays),
  * so a change is never priced under its cost. DeepSeek has no cache write price: a cache miss is
  * the input price, so cache writes are priced as input. OpenCode Go's DeepSeek ids are priced the
- * same (Go is for the owner's own tests only, docs/CLOUD.md "The cloud's engine").
+ * same (Go is for the owner's own tests only, docs/CLOUD.md section 3, "OpenCode, a second cloud engine").
  */
 const DEEPSEEK_V4_PRO: [number, number, number, number] = [1_320_000, 3_960_000, 1_320_000, 44_000];
 const DEEPSEEK_FLASH: [number, number, number, number] = [300_000, 1_200_000, 300_000, 6_000];
@@ -58,7 +58,7 @@ export const MODEL_PRICES: Record<string, [number, number, number, number]> = {
 };
 
 /**
- * The cloud's engine (docs/CLOUD.md, "The cloud's engine"), one choice for the deployment, set
+ * The cloud's engine (docs/CLOUD.md section 3, "OpenCode, a second cloud engine"), one choice for the deployment, set
  * with Convex environment variables, never in code: CLOUD_AGENT_ENGINE "claude" (the default) or
  * "opencode"; CLOUD_OPENCODE_PROVIDER, CLOUD_OPENCODE_MODEL and CLOUD_OPENCODE_SIMPLE_MODEL
  * override the opencode defaults (server/src/cloud-settings.ts reads the same values on the box).
