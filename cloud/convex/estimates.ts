@@ -53,30 +53,42 @@ function fromEveryone(q: number[] | undefined, ownKey: boolean): CreditEstimate 
   return ownKey ? { millicredits: 0, low: 0, high: 0, basis: 'everyone', ownKeyCents: Math.max(1, Math.round((e.millicredits * CREDIT_COST_MICROS) / 1000 / 10_000)) } : e;
 }
 
+/**
+ * What the first app has used so far, over all its changes: its 3 credits cover the whole first
+ * app (a plan question and then the build), not only its first change.
+ */
+export async function firstAppSpent(ctx: QueryCtx, appId: Id<'apps'>): Promise<number> {
+  const rows = await ctx.db.query('changes').withIndex('by_app_at', (q) => q.eq('appId', appId)).collect();
+  return rows.filter((c) => c.firstApp).reduce((n, c) => n + c.actual.millicredits, 0);
+}
+
 /** The estimates for one app (the message box, a plan card, the app's month), for queries and the credit gate. */
 export async function estimateFor(ctx: QueryCtx, user: Doc<'users'>, app: Doc<'apps'>) {
   {
     const sub = await subscriptionOf(ctx, user._id);
     const ownKey = sub?.plan === 'ownKey';
     const past = await pastChanges(ctx, app._id);
-    const firstApp = !(sub?.firstAppDone ?? false) && app.buildHigh === 0;
+    // The first app stays the first app until it has a build or has used its 3 credits.
+    const maybeFirst = !(sub?.firstAppDone ?? false) && app.buildHigh === 0;
+    const firstAppRoom = maybeFirst ? Math.max(0, FIRST_APP_CAP_MILLICREDITS - (await firstAppSpent(ctx, app._id))) : 0;
+    const firstApp = maybeFirst && firstAppRoom > 0;
     const all = await everyone(ctx);
     const next =
       past.length >= 3
         ? estimate(past, DEFAULTS.small, ownKey)
         : (fromEveryone(app.buildHigh === 0 ? all?.newApp : all?.change, ownKey) ?? estimate([], app.buildHigh === 0 ? DEFAULTS.newApp : DEFAULTS.small, ownKey));
-    // The first new app uses at most 3 credits (section 2).
-    if (firstApp && !ownKey) Object.assign(next, { millicredits: Math.min(next.millicredits, FIRST_APP_CAP_MILLICREDITS), low: Math.min(next.low, FIRST_APP_CAP_MILLICREDITS), high: Math.min(next.high, FIRST_APP_CAP_MILLICREDITS) });
+    // The first new app uses at most 3 credits in all (section 2).
+    if (firstApp && !ownKey) Object.assign(next, { millicredits: Math.min(next.millicredits, firstAppRoom), low: Math.min(next.low, firstAppRoom), high: Math.min(next.high, firstAppRoom) });
     // A plan card stands for a bigger change: across areas, or a new app.
     const plan = estimate([], app.buildHigh === 0 ? DEFAULTS.newApp : DEFAULTS.acrossAreas, ownKey);
-    if (firstApp && !ownKey) Object.assign(plan, { millicredits: FIRST_APP_CAP_MILLICREDITS, low: FIRST_APP_CAP_MILLICREDITS, high: FIRST_APP_CAP_MILLICREDITS });
+    if (firstApp && !ownKey) Object.assign(plan, { millicredits: firstAppRoom, low: firstAppRoom, high: firstAppRoom });
     // This month: what it used, and what it likely uses at this pace (its last 30 days).
     const since = Date.now() - 30 * 24 * 3600_000;
     const monthStart = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1);
     const recent = await ctx.db.query('changes').withIndex('by_app_at', (q) => q.eq('appId', app._id).gt('startedAt', since)).collect();
     const used = recent.filter((c) => c.startedAt >= monthStart).reduce((n, c) => n + c.actual.millicredits, 0);
     const pace = recent.reduce((n, c) => n + c.actual.millicredits, 0);
-    return { next, plan, month: { usedMillicredits: tenth(used), paceMillicredits: tenth(pace), changes: recent.length }, firstApp };
+    return { next, plan, month: { usedMillicredits: tenth(used), paceMillicredits: tenth(pace), changes: recent.length }, firstApp, firstAppRoom };
   }
 }
 

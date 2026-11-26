@@ -18,7 +18,7 @@ import {
   roundUpToTenth,
 } from './config';
 import { AGENT_MODEL_PRICES } from './agentPrices';
-import { estimateFor } from './estimates';
+import { estimateFor, firstAppSpent } from './estimates';
 import { balanceOf, expireGrants, spend, subscriptionOf } from './lib/credits';
 import { ownApp, requireUser } from './lib/session';
 
@@ -52,7 +52,7 @@ export async function openChange(ctx: MutationCtx, user: Doc<'users'>, app: Doc<
       ? OWN_KEY_EXTRA_MILLICREDITS_PER_HOUR / 2
       : 0
     : e.firstApp
-      ? FIRST_APP_CAP_MILLICREDITS
+      ? e.firstAppRoom
       : e.next.high;
   if (need > 0 && balance < need) {
     const short = Math.round(need / 100) / 10;
@@ -105,7 +105,7 @@ async function currentChange(ctx: MutationCtx, threadId: Id<'threads'>): Promise
 async function charge(ctx: MutationCtx, change: Doc<'changes'>, millicredits: number, extra: { aiMicros?: number; machineMicros?: number; usageIds?: Id<'usage'>[] }) {
   let take = millicredits;
   if (change.firstApp) {
-    const room = Math.max(0, FIRST_APP_CAP_MILLICREDITS - change.actual.millicredits);
+    const room = Math.max(0, FIRST_APP_CAP_MILLICREDITS - (await firstAppSpent(ctx, change.appId)));
     if (take > room) {
       await ctx.db.insert('ledger', { userId: change.userId, kind: 'adjust', millicredits: 0, changeId: change._id, at: Date.now(), note: `first app: ${take - room} millicredits over the cap, on us` });
       take = room;
@@ -143,7 +143,7 @@ async function charge(ctx: MutationCtx, change: Doc<'changes'>, millicredits: nu
 async function roundUp(ctx: MutationCtx, changeId: Id<'changes'>) {
   const c = (await ctx.db.get(changeId))!;
   let up = roundUpToTenth(c.actual.millicredits) - c.actual.millicredits;
-  if (c.firstApp) up = Math.min(up, Math.max(0, FIRST_APP_CAP_MILLICREDITS - c.actual.millicredits));
+  if (c.firstApp) up = Math.min(up, Math.max(0, FIRST_APP_CAP_MILLICREDITS - (await firstAppSpent(ctx, c.appId))));
   if (up <= 0) return;
   await spend(ctx, c.userId, up, { changeId, note: 'rounded up to a tenth of a credit' });
   await ctx.db.patch(changeId, { actual: { ...c.actual, millicredits: c.actual.millicredits + up } });
@@ -221,9 +221,13 @@ export async function settleChanges(ctx: MutationCtx, threadId: Id<'threads'>) {
     await roundUp(ctx, c._id);
     const settled = (await ctx.db.get(c._id))!;
     await ctx.db.patch(c._id, { state: settled.state === 'stopped' ? 'stopped' : 'done', endedAt: now });
+    // The first app is done once it has a build or has used its 3 credits; a first turn that
+    // only asks a question (a plan) leaves the rest of the 3 credits for the build.
     if (settled.firstApp) {
+      const app = await ctx.db.get(c.appId);
       const sub = await subscriptionOf(ctx, c.userId);
-      if (sub && !sub.firstAppDone) await ctx.db.patch(sub._id, { firstAppDone: true });
+      const done = (app?.buildHigh ?? 0) > 0 || (await firstAppSpent(ctx, c.appId)) >= FIRST_APP_CAP_MILLICREDITS;
+      if (sub && !sub.firstAppDone && done) await ctx.db.patch(sub._id, { firstAppDone: true });
     }
   }
 }

@@ -68,6 +68,30 @@ describe('metering a change', () => {
       ['inference', 'orchestrator', OPUS],
       ['machine', undefined, undefined],
     ]);
+    // No build yet: the first app goes on with what is left of its 3 credits.
+    const sub = await t.run((ctx) => ctx.db.query('subscriptions').first());
+    expect(sub!.firstAppDone).toBe(false);
+  });
+
+  test('a first turn that only asks (a plan) leaves the rest of the 3 credits for the build', async () => {
+    const { t, as, appId, post, takeAll, balance } = await setup();
+    await takeAll();
+    await post('/runner/events', { events: [{ type: 'usage', model: OPUS, tag: { role: 'orchestrator' }, usage: TURN }] });
+    await post('/runner/events', { events: [{ type: 'runner.state', busy: false }] });
+    expect(await balance()).toBeCloseTo(1.9, 5);
+    // The answer is let through with 1.9 credits: the build is still the first app's.
+    await as.mutation(api.chat.send, { appId, text: 'Yes, build it.' });
+    await takeAll();
+    const big = { ...TURN, outputTokens: 30_000 };
+    await post('/runner/events', { events: [1, 2, 3, 4].map(() => ({ type: 'usage', model: OPUS, tag: { role: 'helper', level: 'deep' }, usage: big })) });
+    await t.run((ctx) => ctx.db.patch(appId, { buildHigh: 1 }));
+    await post('/runner/events', { events: [{ type: 'runner.state', busy: false }] });
+    const changes = await t.run((ctx) => ctx.db.query('changes').collect());
+    expect(changes.map((c) => [c.firstApp, c.actual.millicredits])).toEqual([
+      [true, 1100],
+      [true, 1900],
+    ]);
+    expect(await balance()).toBe(0);
     const sub = await t.run((ctx) => ctx.db.query('subscriptions').first());
     expect(sub!.firstAppDone).toBe(true);
   });
