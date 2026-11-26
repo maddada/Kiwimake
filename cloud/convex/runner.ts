@@ -7,6 +7,7 @@ import type { App, ChatItem, WorkerInfo } from '../../shared/protocol';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from './_generated/server';
 import { linkMessage, recordUsage, settleChanges } from './billing';
+import { agentChoice } from './config';
 
 const now = () => Date.now();
 
@@ -55,6 +56,8 @@ export const hello = internalMutation({
       // Made before: a box with no state of its own clones the repo and brings the chat back.
       restore: Boolean(app.repo && app.buildHigh > 0),
       aiMode: user.aiMode ?? 'credit',
+      // Which agent the box runs and the environment the runner gives it (config.ts agentChoice).
+      agent: agentChoice(user.aiMode),
       agentSessionId: t.agentSessionId ?? null,
     };
   },

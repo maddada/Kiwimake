@@ -20,15 +20,18 @@ async function main() {
   if (args['pid-file']) fs.writeFileSync(String(args['pid-file']), String(process.pid));
   // Files the agent writes in the apps folder stay group-writable for us (the kiwi group).
   process.umask(0o002);
-  // The agent's AI key: Instabox's proxy placeholder for this box (ibsec_...), never a real key.
-  // The agent may read it on purpose: the proxy swaps the real key in on the way out.
-  const placeholder = process.env.ANTHROPIC_API_KEY ?? '';
-  if (/^ibsec_[A-Za-z0-9_-]+$/.test(placeholder) && fs.existsSync('/opt/kiwi/agent-env')) {
-    fs.writeFileSync('/opt/kiwi/agent-env', `export ANTHROPIC_API_KEY=${placeholder}\n`);
-  }
   const link = new ConvexLink(String(args.convex), secrets.runnerToken, log);
   const hello = await link.hello();
-  log('hello', JSON.stringify({ app: hello.slug, buildHigh: hello.buildHigh, hasKey: Boolean(hello.certSha256) }));
+  const agent = agentOf(hello);
+  log('hello', JSON.stringify({ app: hello.slug, buildHigh: hello.buildHigh, hasKey: Boolean(hello.certSha256), engine: agent.engine }));
+  // The agent's AI key: Instabox's proxy placeholder for this box (ibsec_...), never a real key,
+  // under the name the engine reads (ANTHROPIC_API_KEY, or the opencode provider's, e.g.
+  // DEEPSEEK_API_KEY). The agent may read it on purpose: the proxy swaps the real key in on the way out.
+  const lines = placeholderLines(process.env, [agent.keyEnv]);
+  if (lines && fs.existsSync('/opt/kiwi/agent-env')) fs.writeFileSync('/opt/kiwi/agent-env', lines);
+  // The engine's settings for the companion (server/src/cloud-settings.ts reads them).
+  Object.assign(process.env, agent.env);
+  if (agent.env.ANYAPP_OPENCODE_CONFIG_DIR) fs.mkdirSync(agent.env.ANYAPP_OPENCODE_CONFIG_DIR, { recursive: true, mode: 0o750 });
 
   // The companion's config, for the cloud (server/src/config.ts, cloud-settings.ts).
   const prefix = args['agent-prefix'] ? String(args['agent-prefix']) : fs.existsSync(AGENT_WRAPPER) ? JSON.stringify(['sudo', '-n', '-u', 'agent', '-H', AGENT_WRAPPER]) : '[]';
@@ -49,7 +52,29 @@ async function main() {
   log('runner stopped');
 }
 
-main()
+/** The hello's agent choice (cloud/convex/config.ts agentChoice); an older Convex sends none: Claude. */
+export function agentOf(hello) {
+  const a = hello?.agent;
+  if (a && (a.engine === 'claude' || a.engine === 'opencode') && typeof a.keyEnv === 'string' && a.env && typeof a.env === 'object') {
+    const env = Object.fromEntries(Object.entries(a.env).filter(([k, v]) => /^ANYAPP_(CLOUD_ENGINE|OPENCODE_[A-Z_]+)$/.test(k) && typeof v === 'string'));
+    return { engine: a.engine, keyEnv: a.keyEnv, env };
+  }
+  return { engine: 'claude', keyEnv: 'ANTHROPIC_API_KEY', env: { ANYAPP_CLOUD_ENGINE: 'claude' } };
+}
+
+/**
+ * The agent-env file's lines: every AI key name this box knows whose value is an Instabox proxy
+ * placeholder (ibsec_...). Never a real key: anything else is left out. Empty: none found.
+ */
+export function placeholderLines(env, names) {
+  const all = [...new Set(['ANTHROPIC_API_KEY', ...names])].filter((n) => /^[A-Z_][A-Z0-9_]*$/.test(n));
+  return all
+    .filter((n) => /^ibsec_[A-Za-z0-9_-]+$/.test(env[n] ?? ''))
+    .map((n) => `export ${n}=${env[n]}\n`)
+    .join('');
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()
   .catch((e) => {
     console.error(e?.stack ?? e?.message ?? e);
     process.exitCode = 1;

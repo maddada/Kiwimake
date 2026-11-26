@@ -7,7 +7,7 @@ import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { internalAction, internalMutation, internalQuery, type MutationCtx } from './_generated/server';
-import { BOX } from './config';
+import { agentChoice, BOX, boxSecrets } from './config';
 import { randomToken, sha256Hex } from './lib/crypto';
 import { boxProvider } from './lib/instabox';
 import { ProviderError } from './lib/provider';
@@ -64,7 +64,7 @@ export const thread = internalQuery({
     const box = t.boxId ? await ctx.db.get(t.boxId) : null;
     const app = await ctx.db.get(t.appId);
     const user = await ctx.db.get(t.userId);
-    return { thread: t, box, app, ownKey: user?.aiMode === 'ownAnthropic' };
+    return { thread: t, box, app, ownKey: user?.aiMode === 'ownAnthropic', aiMode: user?.aiMode };
   },
 });
 
@@ -177,11 +177,12 @@ export const create = internalAction({
       boxId = await ctx.runMutation(internal.boxes.newBoxRow, { threadId, name });
       const b = await p.create({
         name,
-        snapshot: fromSnapshot ?? BOX.imageSnapshot,
+        snapshot: fromSnapshot ?? (process.env.BOX_IMAGE_SNAPSHOT || BOX.imageSnapshot),
         metadata: { kiwiThread: String(threadId), kiwiUser: String(s.thread.userId) },
-        // The AI key reaches the box only as Instabox's proxy placeholder (section 2). On the Own key
-        // plan the box gets none of ours: the runner brings the person's own key.
-        secrets: s.ownKey ? [] : (process.env.BOX_PROXY_SECRETS ?? 'ANTHROPIC_API_KEY').split(',').filter(Boolean),
+        // The AI key reaches the box only as Instabox's proxy placeholder (section 2): Anthropic's,
+        // or the opencode provider's (DEEPSEEK_API_KEY). On the Own key plan the box gets none of
+        // ours: the runner brings the person's own key.
+        secrets: s.ownKey ? [] : boxSecrets(agentChoice(s.aiMode)),
       });
       await ctx.runMutation(internal.boxes.patchBox, { boxId, patch: { providerId: b.id } });
       await p.waitFor(b.id, ['running'], 5 * 60_000);
