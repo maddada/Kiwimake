@@ -44,6 +44,8 @@ export default defineSchema({
     githubDisconnectedAt: v.optional(v.number()),
     stripeCustomerId: v.optional(v.string()),
     blocked: v.optional(v.boolean()),
+    // "Delete my account" was confirmed: the account is refused everywhere while its data goes.
+    deletingAt: v.optional(v.number()),
   })
     .index('email', ['email'])
     .index('phone', ['phone'])
@@ -87,11 +89,14 @@ export default defineSchema({
     // The prompt the app was made from (its first change).
     prompt: v.optional(v.string()),
     updatedAt: v.number(),
+    // Deleted from the phone: it can be brought back until purgeAt, then its data is deleted for good.
     deletedAt: v.optional(v.number()),
+    purgeAt: v.optional(v.number()),
   })
     .index('by_user', ['userId'])
     .index('by_user_slug', ['userId', 'slug'])
-    .index('by_package', ['packageName']),
+    .index('by_package', ['packageName'])
+    .index('by_purge', ['purgeAt']),
 
   // One app's chat with its agent, and the box it runs on.
   threads: defineTable({
@@ -178,7 +183,8 @@ export default defineSchema({
   })
     .index('by_app_at', ['appId', 'startedAt'])
     .index('by_message', ['threadId', 'messageItemId'])
-    .index('by_thread_state', ['threadId', 'state']),
+    .index('by_thread_state', ['threadId', 'state'])
+    .index('by_user', ['userId']),
 
   builds: defineTable({
     appId: v.id('apps'),
@@ -267,7 +273,8 @@ export default defineSchema({
     millicredits: v.number(),
   }).index('by_user', ['userId']),
 
-  // Signing keys, sealed (section 6). Never deleted.
+  // Signing keys, sealed (section 6). Deleted only PRIVACY.keyGraceDays after their app or account
+  // was deleted (deleteAfter).
   keys: defineTable({
     appId: v.id('apps'),
     userId: v.id('users'),
@@ -279,7 +286,29 @@ export default defineSchema({
     kekVersion: v.number(),
     lineage: v.optional(v.string()),
     at: v.number(),
-  }).index('by_app', ['appId']),
+    deleteAfter: v.optional(v.number()),
+    /** The app's name, kept when the app is deleted, for the key file the person can still save. */
+    appName: v.optional(v.string()),
+  })
+    .index('by_app', ['appId'])
+    .index('by_user', ['userId'])
+    .index('by_delete_after', ['deleteAfter']),
+
+  // A file the person asked for (their data, their signing keys), served once signed in by a
+  // one-time link (/download/<token>, only the token's hash kept) until expiresAt, then deleted.
+  downloads: defineTable({
+    userId: v.id('users'),
+    kind: v.union(v.literal('data'), v.literal('keys')),
+    tokenHash: v.string(),
+    fileId: v.id('_storage'),
+    fileName: v.string(),
+    mimeType: v.string(),
+    sizeBytes: v.number(),
+    expiresAt: v.number(),
+  })
+    .index('by_hash', ['tokenHash'])
+    .index('by_user', ['userId'])
+    .index('by_expiry', ['expiresAt']),
 
   signings: defineTable({
     appId: v.id('apps'),

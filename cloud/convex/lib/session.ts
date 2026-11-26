@@ -11,6 +11,7 @@ export async function requireUser(ctx: QueryCtx): Promise<Doc<'users'>> {
   const user = await ctx.db.get(userId);
   if (!user) throw new Refused('Sign in first.');
   if (user.blocked) throw new Refused('This account is blocked. Write to us if you think that is a mistake.');
+  if (user.deletingAt) throw new Refused('This account is being deleted.');
   return user;
 }
 

@@ -32,6 +32,8 @@ import type * as moves from "../moves.js";
 import type * as pages from "../pages.js";
 import type * as pclinks from "../pclinks.js";
 import type * as pcoff from "../pcoff.js";
+import type * as privacy from "../privacy.js";
+import type * as privacyNode from "../privacyNode.js";
 import type * as runner from "../runner.js";
 import type * as signing from "../signing.js";
 import type * as stripe from "../stripe.js";
@@ -69,6 +71,8 @@ declare const fullApi: ApiFromModules<{
   pages: typeof pages;
   pclinks: typeof pclinks;
   pcoff: typeof pcoff;
+  privacy: typeof privacy;
+  privacyNode: typeof privacyNode;
   runner: typeof runner;
   signing: typeof signing;
   stripe: typeof stripe;

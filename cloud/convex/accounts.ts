@@ -33,6 +33,8 @@ export const me = query({
       pcOffSwitch: Boolean(user.pcOffSwitch),
       plan: sub ? { id: sub.plan, name: PLANS[sub.plan].name, interval: sub.interval, status: sub.status, renewsAt: sub.periodEnd, cancelAtPeriodEnd: sub.cancelAtPeriodEnd } : { id: 'free', name: 'Free' },
       credits: (await balanceOf(ctx, user._id)) / 1000,
+      // "Manage plan" (Stripe's portal) is there once the person has paid for anything.
+      billing: Boolean(user.stripeCustomerId),
       pcs: links.filter((l) => !l.revokedAt).map((l) => ({ id: l._id, name: l.deviceName, linkedFrom: l.linkedFrom, fromName: l.linkedFromName ?? null, lastSeenAt: l.lastSeenAt ?? null })),
     };
   },

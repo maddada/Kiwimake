@@ -8,7 +8,7 @@ import { getAuthUserId } from '@convex-dev/auth/server';
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
-import { action, httpAction, internalMutation, internalQuery, type MutationCtx } from './_generated/server';
+import { action, httpAction, internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx } from './_generated/server';
 import { EXTRA_PACK, PLANS, type Interval, type PlanId } from './config';
 import { grant, monthEnd, monthKey, subscriptionOf } from './lib/credits';
 import { hmacSha256B64, sameHex } from './lib/crypto';
@@ -36,7 +36,7 @@ export function form(obj: Record<string, unknown>, prefix = ''): string[] {
   return out;
 }
 
-async function stripe<T = any>(method: 'GET' | 'POST', path: string, body?: Record<string, unknown>): Promise<T> {
+export async function stripe<T = any>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     method,
     headers: { Authorization: `Bearer ${secretKey()}`, ...(body ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}) },
@@ -103,15 +103,75 @@ export const checkout = action({
   },
 });
 
-/** The page Stripe sends the browser to after paying (or cancelling): back to Kiwimake. */
+/**
+ * "Manage plan": Stripe's customer portal for the signed-in person (change the card, see receipts,
+ * cancel the plan in two taps; cancelling keeps the plan to the end of the period that was paid).
+ */
+export const portal = action({
+  args: {},
+  handler: async (ctx): Promise<{ url: string }> => {
+    const userId = await getAuthUserId(ctx);
+    if (!userId) throw new Error('Sign in first.');
+    const user = await ctx.runQuery(internal.stripe.userRow, { userId });
+    if (!user || user.blocked || user.deletingAt) throw new Error('Sign in first.');
+    if (!user.stripeCustomerId) throw new Error('You have no plan or payments to manage yet.');
+    const configuration = await portalConfiguration(ctx);
+    const s = await stripe<{ url: string }>('POST', '/billing_portal/sessions', {
+      customer: user.stripeCustomerId,
+      return_url: `${process.env.CONVEX_SITE_URL}/billing/done?portal=1`,
+      configuration,
+    });
+    return { url: s.url };
+  },
+});
+
+/** Our portal settings, made once in Stripe and remembered (a test-mode account has none until saved). */
+async function portalConfiguration(ctx: ActionCtx): Promise<string> {
+  const have = await ctx.runQuery(internal.stripe.metaValue, { key: 'stripePortal' });
+  if (typeof have?.id === 'string' && have.version === PORTAL_VERSION) return have.id;
+  const c = await stripe<{ id: string }>('POST', '/billing_portal/configurations', {
+    business_profile: { headline: 'Kiwimake: your plan and payments', privacy_policy_url: 'https://kiwimake.ai/privacy', terms_of_service_url: 'https://kiwimake.ai/terms' },
+    features: {
+      // As easy as signing up: one tap and a confirm, no survey. The plan runs to the end of what was paid.
+      subscription_cancel: { enabled: true, mode: 'at_period_end' },
+      payment_method_update: { enabled: true },
+      invoice_history: { enabled: true },
+      customer_update: { enabled: true, allowed_updates: ['email', 'name', 'address'] },
+    },
+    metadata: { kiwimake: `portal-v${PORTAL_VERSION}` },
+  });
+  await ctx.runMutation(internal.stripe.setMeta, { key: 'stripePortal', value: { id: c.id, version: PORTAL_VERSION } });
+  return c.id;
+}
+const PORTAL_VERSION = 1;
+
+export const metaValue = internalQuery({
+  args: { key: v.string() },
+  handler: async (ctx, { key }) => (await ctx.db.query('meta').withIndex('by_key', (q) => q.eq('key', key)).first())?.value ?? null,
+});
+
+export const setMeta = internalMutation({
+  args: { key: v.string(), value: v.any() },
+  handler: async (ctx, { key, value }) => {
+    const row = await ctx.db.query('meta').withIndex('by_key', (q) => q.eq('key', key)).first();
+    if (row) await ctx.db.patch(row._id, { value });
+    else await ctx.db.insert('meta', { key, value });
+  },
+});
+
+/** The page Stripe sends the browser to after paying (or cancelling, or leaving the portal): back to Kiwimake. */
 export const done = httpAction(async (_ctx, req) => {
-  const ok = new URL(req.url).searchParams.get('ok') === '1';
-  const back = `anyappagent://plan?paid=${ok ? 1 : 0}`;
+  const q = new URL(req.url).searchParams;
+  const portal = q.get('portal') === '1';
+  const ok = q.get('ok') === '1';
+  const back = portal ? 'anyappagent://plan?managed=1' : `anyappagent://plan?paid=${ok ? 1 : 0}`;
+  const title = portal ? 'All set' : ok ? 'Thank you' : 'Nothing was paid';
+  const line = portal ? 'Any change you made shows in Kiwimake in a moment.' : ok ? 'Your credits arrive in Kiwimake in a moment.' : 'You can choose again in Kiwimake whenever you like.';
   return new Response(
-    `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>${ok ? 'Thank you' : 'Not paid'}</title>
+    `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
 <style>body{font-family:system-ui,sans-serif;background:#F3EEE6;color:#22201C;padding:32px;max-width:520px;margin:auto}@media (prefers-color-scheme:dark){body{background:#1C1B19;color:#EDE8E0}}
 a.b{display:inline-block;margin-top:20px;padding:12px 18px;border-radius:10px;background:#2F6B4F;color:#fff;text-decoration:none}.r{text-align:right}</style>
-<h1>${ok ? 'Thank you' : 'Nothing was paid'}</h1><p>${ok ? 'Your credits arrive in Kiwimake in a moment.' : 'You can choose again in Kiwimake whenever you like.'}</p><div class="r"><a class="b" href="${back}">Back to Kiwimake</a></div>
+<h1>${title}</h1><p>${line}</p><div class="r"><a class="b" href="${back}">Back to Kiwimake</a></div>
 <script>setTimeout(function(){location.href=${JSON.stringify(back)}},800)</script>`,
     { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } },
   );
@@ -208,9 +268,12 @@ export const apply = internalMutation({
       const sub = await subByStripe(ctx, String(o.id));
       if (!sub) return;
       const status = type === 'customer.subscription.deleted' || o.status === 'canceled' ? 'cancelled' : o.status === 'past_due' || o.status === 'unpaid' ? 'pastDue' : 'active';
+      // Cancelled in the portal: newer Stripe API versions set cancel_at (the period's end) instead of cancel_at_period_end.
+      const cancelAt = typeof o.cancel_at === 'number' ? o.cancel_at * 1000 : undefined;
       await ctx.db.patch(sub._id, {
         status,
-        cancelAtPeriodEnd: Boolean(o.cancel_at_period_end),
+        cancelAtPeriodEnd: Boolean(o.cancel_at_period_end || cancelAt),
+        ...(cancelAt && status !== 'cancelled' ? { periodEnd: cancelAt } : {}),
         ...(status === 'cancelled' ? { plan: 'free' as const, stripeSubscriptionId: undefined, nextGrantAt: undefined } : {}),
       });
       if (status === 'cancelled') {
@@ -251,5 +314,23 @@ export const yearlyGrants = internalMutation({
       await grantPlanMonth(ctx, sub, now);
       await ctx.db.patch(sub._id, { nextGrantAt: monthAfter(sub.nextGrantAt), boxSecondsThisMonth: 0 });
     }
+  },
+});
+
+/** Dev (KIWI_ALLOW_WIPE=1): a customer's or subscription's state at Stripe, ids and statuses only (the deletion proof). */
+export const devStripeState = internalAction({
+  args: { customer: v.optional(v.string()), subscription: v.optional(v.string()) },
+  handler: async (_ctx, { customer, subscription }) => {
+    if (process.env.KIWI_ALLOW_WIPE !== '1') throw new Error('dev only');
+    const out: Record<string, unknown> = {};
+    if (customer) {
+      const c = await stripe<any>('GET', `/customers/${encodeURIComponent(customer)}?expand[]=subscriptions`).catch((e: Error) => ({ error: e.message }));
+      out.customer = { id: c.id, deleted: Boolean(c.deleted), livemode: c.livemode, error: c.error, subscriptions: c.subscriptions?.data?.map((s: any) => ({ id: s.id, status: s.status, cancel_at_period_end: s.cancel_at_period_end, cancel_at: s.cancel_at })) };
+    }
+    if (subscription) {
+      const s = await stripe<any>('GET', `/subscriptions/${encodeURIComponent(subscription)}`);
+      out.subscription = { id: s.id, status: s.status, cancel_at_period_end: s.cancel_at_period_end, cancel_at: s.cancel_at, canceled_at: s.canceled_at, livemode: s.livemode };
+    }
+    return out;
   },
 });

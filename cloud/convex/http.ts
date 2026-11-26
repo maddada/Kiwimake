@@ -8,6 +8,7 @@ import { httpAction, type ActionCtx } from './_generated/server';
 import { auth } from './auth';
 import { callback } from './github';
 import { route as pageRoute, storePage } from './pages';
+import { downloadRoute } from './privacy';
 import { sealKeyForPc, sealTicket } from './signing';
 import { done as billingDone, webhook as stripeWebhook } from './stripe';
 import { hmacSha256B64, openSecret, randomToken, sha256Hex, unb64 } from './lib/crypto';
@@ -21,6 +22,8 @@ http.route({ path: '/github/callback', method: 'GET', handler: callback });
 // Stripe: the signed webhook, and the page a payment returns to.
 http.route({ path: '/stripe/webhook', method: 'POST', handler: stripeWebhook });
 http.route({ path: '/billing/done', method: 'GET', handler: billingDone });
+// A file the person asked for (their data, their signing keys), by its one-time link.
+http.route({ pathPrefix: '/download/', method: 'GET', handler: downloadRoute });
 // Pages the phone opens (signed ticket in the path, no phone token).
 http.route({ pathPrefix: '/page/', method: 'GET', handler: pageRoute });
 http.route({ pathPrefix: '/page/', method: 'POST', handler: pageRoute });

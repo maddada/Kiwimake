@@ -137,6 +137,21 @@ export const BOX = {
   maxPerUser: 5,
 };
 
+/**
+ * Deleting and downloading (docs/CLOUD.md section 6, "Deleting an app, an account, and downloading
+ * your data"). Each is one constant, so the policy is one edit.
+ */
+export const PRIVACY = {
+  /** A deleted cloud app can be brought back this long; then its chat, files and builds are deleted for good. */
+  appUndoMinutes: 10,
+  /** Signing keys of deleted apps and deleted accounts stay sealed this long (a person who changes their mind can write to us), then are deleted. */
+  keyGraceDays: 30,
+  /** Each app keeps the files (APKs, quick updates) of its newest builds only. */
+  keepBuilds: 3,
+  /** A download link (my data, signing keys) works this long; then the file is deleted. */
+  downloadMinutes: 30,
+};
+
 /** Package prefixes: a cloud-born app and a PC-born app (both accepted; the name is the app's for life). */
 export const CLOUD_PACKAGE_PREFIX = 'com.anyappcloud.';
 export const PC_PACKAGE_PREFIX = 'com.anyapp.';

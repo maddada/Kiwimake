@@ -5,7 +5,7 @@ import type { App, BuildInfo } from '../../shared/protocol';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
-import { CLOUD_PACKAGE_PREFIX } from './config';
+import { CLOUD_PACKAGE_PREFIX, PRIVACY } from './config';
 import { onCloudChange } from './lib/credits';
 import { openChange } from './billing';
 import { ownApp, requireUser } from './lib/session';
@@ -192,14 +192,56 @@ export const create = mutation({
   },
 });
 
+/**
+ * Delete (docs/CLOUD.md section 6, "Deleting an app"): the app leaves the grid and its machine goes
+ * at once; it can be brought back for PRIVACY.appUndoMinutes, then privacy.purgeApp deletes its
+ * chat, files and builds for good. Its code stays on the person's GitHub.
+ */
 export const remove = mutation({
   args: { appId: v.string() },
   handler: async (ctx, { appId }) => {
     const user = await requireUser(ctx);
     const app = await ownApp(ctx, user._id, appId);
-    await ctx.db.patch(app._id, { deletedAt: Date.now(), updatedAt: Date.now() });
+    const now = Date.now();
+    const purgeAt = now + PRIVACY.appUndoMinutes * 60_000;
+    await ctx.db.patch(app._id, { deletedAt: now, purgeAt, updatedAt: now });
     const thread = await ctx.db.query('threads').withIndex('by_app', (q) => q.eq('appId', app._id)).first();
     if (thread) await ctx.scheduler.runAfter(0, internal.boxes.retire, { threadId: thread._id });
+    await ctx.scheduler.runAt(purgeAt, internal.privacy.purgeApp, { appId: app._id });
+    return { purgeAt };
+  },
+});
+
+/** Undo a delete while its window lasts. The next message starts a fresh machine from the code on GitHub. */
+export const restore = mutation({
+  args: { appId: v.string() },
+  handler: async (ctx, { appId }) => {
+    const user = await requireUser(ctx);
+    const id = ctx.db.normalizeId('apps', appId);
+    const app = id ? await ctx.db.get(id) : null;
+    if (!app || app.userId !== user._id || !app.deletedAt || !app.purgeAt || app.purgeAt <= Date.now()) throw new Error('That app is deleted for good now.');
+    await ctx.db.patch(app._id, { deletedAt: undefined, purgeAt: undefined, updatedAt: Date.now() });
+    return toApp(ctx, (await ctx.db.get(app._id))!);
+  },
+});
+
+/** Cloud apps deleted a moment ago that can still be brought back. */
+export const recentlyDeleted = query({
+  args: {},
+  handler: async (ctx) => {
+    let user;
+    try {
+      user = await requireUser(ctx);
+    } catch {
+      return [];
+    }
+    const now = Date.now();
+    const rows = await ctx.db.query('apps').withIndex('by_user', (q) => q.eq('userId', user._id)).collect();
+    return Promise.all(
+      rows
+        .filter((a) => a.deletedAt && a.purgeAt && a.purgeAt > now)
+        .map(async (a) => ({ ...(await toApp(ctx, a)), deletedAt: new Date(a.deletedAt!).toISOString(), purgeAt: new Date(a.purgeAt!).toISOString() })),
+    );
   },
 });
 

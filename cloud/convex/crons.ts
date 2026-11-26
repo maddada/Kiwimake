@@ -10,4 +10,8 @@ crons.interval('box reconcile', { minutes: 10 }, internal.boxes.reconcile, {});
 crons.daily('credits expire', { hourUTC: 0, minuteUTC: 5 }, internal.billing.expire, {});
 crons.daily('estimate medians', { hourUTC: 0, minuteUTC: 15 }, internal.billing.medians, {});
 crons.interval('yearly plan grants', { hours: 1 }, internal.stripe.yearlyGrants, {});
+// Deleting for good (privacy.ts): apps past their undo window, ended download links, signing keys
+// past their grace period hourly; old build files daily.
+crons.interval('privacy sweep', { hours: 1 }, internal.privacy.sweep, {});
+crons.daily('old build files', { hourUTC: 0, minuteUTC: 25 }, internal.privacy.sweepBuilds, {});
 export default crons;

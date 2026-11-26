@@ -167,7 +167,9 @@ export const log = query({
   args: { appId: v.string() },
   handler: async (ctx, { appId }) => {
     const user = await requireUser(ctx);
-    const app = await ownApp(ctx, user._id, appId);
+    // Null for an app deleted while its sheet is open (a thrown query takes the phone's screen down).
+    const app = await ownApp(ctx, user._id, appId).catch(() => null);
+    if (!app) return null;
     const key = await ctx.db.query('keys').withIndex('by_app', (q) => q.eq('appId', app._id)).first();
     const rows = await ctx.db.query('signings').withIndex('by_app', (q) => q.eq('appId', app._id)).order('desc').take(60);
     const builds = new Map<number, { build: number; at: number; files: number }>();

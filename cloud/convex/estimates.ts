@@ -84,7 +84,9 @@ export const forApp = query({
   args: { appId: v.string() },
   handler: async (ctx, { appId }) => {
     const user = await requireUser(ctx);
-    const app: Doc<'apps'> = await ownApp(ctx, user._id, appId);
-    return estimateFor(ctx, user, app);
+    // An app deleted while its sheet is still open answers null, not an error: a thrown query
+    // takes the phone's whole screen down with it.
+    const app: Doc<'apps'> | null = await ownApp(ctx, user._id, appId).catch(() => null);
+    return app ? estimateFor(ctx, user, app) : null;
   },
 });

@@ -811,7 +811,9 @@ else. Each is enforced in Convex unless it says otherwise.
   25 MB (one ABI), a quick update about 2 MB, so the free GB covers about 40 first installs or 500
   quick updates a month across all users. Above that the plan in section 3 holds: APKs move to
   Cloudflare R2 (no egress fee) behind the same expiring links, with no change on the phone.
-  Old builds' files are not deleted yet: storage grows with every build (to add with R2).
+  Only the newest builds of each app keep their files (`PRIVACY.keepBuilds`, 3): older ones are
+  deleted when a new build arrives, and a daily sweep catches the rest (section 6, "Deleting").
+  The build rows stay, without files.
 - **Not built yet:** a daily credit or machine-hour ceiling per account beyond what credits
   allow, and an alarm when the month's Anthropic or Instabox bill passes a threshold (both are a
   cron over `usage` and `boxes`, after launch numbers exist).
@@ -832,7 +834,8 @@ Convex's own. Money is stored in millionths of a dollar ("micros"), never floats
 | `builds` | `appId`, `number`, `delivery` ("apk" or "quick"), `files` (`{abi, fileId, sizeBytes, sha256}[]`), `otaFileId`, `runtime`, `changes` (`ChangeNotes`), `commit`, `pushed`, `seconds` | `by_app_number` |
 | `usage` | `userId`, `appId`, `threadId`, `changeId`, `kind` ("inference" or "machine"), `workerId?`, `level?`, `model?`, `effort?`, `tokens` (`TokenUsage`) or `seconds` and `size`, `costMicros` (our cost, never shown), `millicredits` (0 for AI on their own key), `settled` | `by_user_at`, `by_change`, `by_app_level` |
 | `subscriptions`, `grants`, `ledger`, `balances` | Plans and credits: section 5 | |
-| `keys` | `appId`, `userId`, `packageName`, `certSha256`, `wrappedDataKey`, `ciphertext`, `iv`, `kekVersion`, `lineage?` (never deleted) | `by_app` |
+| `keys` | `appId`, `userId`, `packageName`, `certSha256`, `wrappedDataKey`, `ciphertext`, `iv`, `kekVersion`, `lineage?`, `deleteAfter?` (set when its app or account is deleted; the key goes `PRIVACY.keyGraceDays` later), `appName?` (kept then, for the key file) | `by_app`, `by_user`, `by_delete_after` |
+| `downloads` | A file the person asked for (their data, their signing keys): `userId`, `kind`, `tokenHash` (of the one-time link), `fileId`, `fileName`, `expiresAt` | `by_hash`, `by_user`, `by_expiry` |
 | `signings` | `appId`, `build`, `sha256` of what was signed, `at` | `by_app` |
 | `secrets` | `userId`, `kind` ("anthropic", "githubRefresh"), `wrappedDataKey`, `ciphertext`, `iv`, `last4`, `expiresAt?` | `by_user_kind` |
 | `pcLinks` | One PC acting for its owner. `userId`, `tokenHash`, `deviceName`, `scopes` (`share`, `web`, `move`), `linkedFrom` ("phone" or "pc"), `createdAt`, `lastSeenAt`, `revokedAt?` | `by_hash`, `by_user` |
@@ -923,8 +926,8 @@ costs drift above the cost basis, the basis is raised (one constant) before marg
 ## 6. Signing keys in Convex ("so never lost")
 
 Each app keeps its own signing key, as on the PC since stage 1 of `docs/DISTRIBUTION.md`. Losing it
-means no phone ever takes that app's update again, so it is stored in Convex, encrypted, never
-deleted. Leaking it means anyone can make an update phones accept, so it is opened only for one
+means no phone ever takes that app's update again, so it is stored in Convex, encrypted, and kept
+for as long as the app exists (deleting the app or the account starts a grace period, below). Leaking it means anyone can make an update phones accept, so it is opened only for one
 signing, never where the agent can read it. It is not code and never goes to GitHub.
 
 **Encryption (envelope):**
@@ -966,6 +969,66 @@ it, so anything Gradle can see, a bad prompt or a bad library could print or sen
 **Moving between PC and cloud** (in the first version, section 3): the key travels sealed in the
 desktop's key backup format (`builder/lib/keybackup.mjs`) through the PC link, never as a file the
 person handles; in Convex it is wrapped like any other key. The code moves through GitHub.
+
+### Deleting an app, an account, and downloading your data (added 2026-11-26)
+
+The legal drafts (`website/public/terms.html`, `privacy.html`, `refunds.html`) needed the product to
+let people leave and take their data. The numbers are one constant each, `PRIVACY` in
+`cloud/convex/config.ts`; the code is `cloud/convex/privacy.ts` and `privacyNode.ts`.
+
+| Constant | Today | What it does |
+| --- | --- | --- |
+| `appUndoMinutes` | 10 | A deleted cloud app can be brought back this long |
+| `keyGraceDays` | 30 | Signing keys of deleted apps and accounts stay sealed this long, then are deleted |
+| `keepBuilds` | 3 | Builds per app that keep their APK and quick-update files |
+| `downloadMinutes` | 30 | A download link works this long; then its file is deleted |
+
+- **Manage plan** (phone, Your plan): Stripe's customer portal (`stripe.portal`), made with our own
+  portal settings (`billing_portal/configurations`, remembered in `meta`): change the card, see
+  receipts, cancel. Cancelling is one tap and a confirm, no survey, and keeps the plan to the end of
+  what was paid (`at_period_end`); the plan card then says "Starter ends on ..." and "Keep my plan"
+  reopens the portal to renew. The webhook reads `cancel_at` as well as `cancel_at_period_end`
+  (newer Stripe API versions set only `cancel_at`).
+- **Deleting one cloud app** (the app's sheet, Delete): it leaves the grid and its machine and
+  snapshot go at once (`boxes.retire`); for `appUndoMinutes` it can come back (Undo on Home, or
+  Settings, "Recently deleted in the cloud"), and its next message starts a fresh machine from the
+  code on GitHub. Then `privacy.purgeApp` deletes its chat rows and helpers' chats, inbox, pages
+  and their HTML, chat pictures, to-dos, builds and their files, signing log, tickets, moves, icon,
+  thread and app row. Its signing key gets `deleteAfter` and the hourly sweep deletes it after
+  `keyGraceDays`. What its changes cost (`changes`, `usage`, `ledger`) stays with the account until
+  the account goes. Its code stays on the person's GitHub: it is theirs. "Save its signing key
+  first" is offered in the delete panel. The app's open sheet keeps asking about it for a moment:
+  `estimates.forApp` and `signing.log` answer null for a deleted app, not an error (a thrown query
+  blanks the phone's screen).
+- **Deleting the account** (Account, Delete my account; two taps, the mutation also wants the words
+  `delete my account`): the account is refused everywhere at once (`users.deletingAt`, checked by
+  `requireUser` and the PC routes) and its PC links are revoked. Then `privacy.deleteAccountRun`:
+  the Stripe customer is deleted (which cancels the plan at once and removes the card; Stripe keeps
+  its own payment records), every machine and snapshot is removed, every app is purged as above,
+  then every row about the person: subscription, grants, ledger, balance, usage, changes, stored
+  secrets (own AI key, GitHub tokens), linked PCs and their requests, moves, boxes, downloads,
+  sign-in sessions, refresh tokens and sign-in methods, and the account itself. Signing keys follow
+  the grace period. It runs again (backing off) until it is done, so a Stripe or Instabox error
+  never leaves a plan billing a deleted account. The phone signs out at once.
+- **Download my data** (Account, and the delete screen): one zip (`privacyNode.myData`) with
+  `account.json` (sign-in, plan, credits and grants, linked PCs, apps) and per app `app.json`,
+  `chat.txt` and `chat.json` (helpers' chats too), `todos.json`, `versions.json` (and what each
+  change used), its pages, icon and chat pictures, and `code.zip` from the person's GitHub
+  (a one-repo token, the repo's zipball) or `code.txt` saying where the code is. No key material,
+  no AI key (only its last 4), no card data.
+- **Save signing keys** (Account, the delete screen, the delete panel for one app): the keys,
+  opened from their envelopes in a Node action only, in the desktop's key backup format
+  (`builder/lib/keybackup.mjs`: scrypt and AES-256-GCM with a password the person picks, at least 8
+  characters), as a `.anyappkeys` file. Kiwimake on a PC restores it (Settings, Signing keys,
+  Restore) and can keep updating the apps. The key of a deleted app can still be saved until its
+  grace period ends (the key row keeps the app's name, `keys.appName`); the delete screen counts
+  those keys too. After an account is deleted nobody can sign in to save them: the grace period
+  then only covers a person who writes to us.
+- **Downloads** are files in storage behind `GET /download/<token>` (only the token's hash is kept),
+  served as an attachment, so the phone's browser saves them; one of each kind a minute; the link
+  ends after `downloadMinutes` and the hourly sweep deletes the file.
+- **Not done here**: uninstalling the GitHub App from the person's account (they can, in GitHub's
+  settings; the delete screen says so) and deleting `anyapp-cloud-*` repos (they are the person's).
 
 ## 7. Costs
 

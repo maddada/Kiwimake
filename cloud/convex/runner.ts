@@ -8,6 +8,7 @@ import type { Doc, Id } from './_generated/dataModel';
 import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from './_generated/server';
 import { linkMessage, recordUsage, settleChanges } from './billing';
 import { agentChoice } from './config';
+import { pruneBuilds } from './privacy';
 
 const now = () => Date.now();
 
@@ -213,8 +214,8 @@ export const events = internalMutation({
   },
 });
 
-/** Keeps the files of the last 3 builds per app; older ones are deleted (their URLs stop working). */
-const KEEP_BUILDS = 3;
+// Keeps the files of the newest PRIVACY.keepBuilds builds per app; older ones are deleted (their
+// URLs stop working): privacy.pruneBuilds.
 
 export const recordBuild = internalMutation({
   args: {
@@ -245,12 +246,7 @@ export const recordBuild = internalMutation({
       ...(b.commit && b.pushed ? { pushedCommit: b.commit } : {}),
       updatedAt: now(),
     });
-    const all = await ctx.db.query('builds').withIndex('by_app_number', (q) => q.eq('appId', app._id)).order('desc').collect();
-    for (const old of all.slice(KEEP_BUILDS)) {
-      for (const f of old.files) await ctx.storage.delete(f.fileId).catch(() => {});
-      if (old.otaFileId) await ctx.storage.delete(old.otaFileId).catch(() => {});
-      await ctx.db.patch(old._id, { files: [], otaFileId: undefined });
-    }
+    await pruneBuilds(ctx, app._id);
   },
 });
 

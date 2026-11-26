@@ -41,7 +41,7 @@ export type PcAuth = {
 async function authOf(ctx: QueryCtx, link: Doc<'pcLinks'> | null): Promise<PcAuth | null> {
   if (!link || link.revokedAt) return null;
   const user = await ctx.db.get(link.userId);
-  if (!user || user.blocked) return null;
+  if (!user || user.blocked || user.deletingAt) return null;
   return {
     linkId: link._id,
     userId: link.userId,
