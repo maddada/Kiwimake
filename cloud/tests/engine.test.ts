@@ -8,6 +8,7 @@ import type { Id } from '../convex/_generated/dataModel';
 import schema from '../convex/schema';
 import { priceTokens } from '../convex/billing';
 import { agentChoice, boxSecrets } from '../convex/config';
+import { agentChoice as newAgentChoice } from '../convex/agent';
 
 const modules = import.meta.glob('../convex/**/*.*s');
 
@@ -84,9 +85,10 @@ describe("the runner's hello", () => {
 
   test('says which engine and environment the box runs', async () => {
     const { t, thread } = await setup();
-    expect((await t.mutation(internal.runner.hello, { threadId: thread._id })).agent).toEqual({ engine: 'claude', keyEnv: 'ANTHROPIC_API_KEY', env: { ANYAPP_CLOUD_ENGINE: 'claude' } });
+    expect((await t.mutation(internal.runner.hello, { threadId: thread._id })).agent).toEqual({ engine: 'claude', keyEnv: 'ANTHROPIC_API_KEY', keyEnvs: ['ANTHROPIC_API_KEY'], env: { ANYAPP_CLOUD_ENGINE: 'claude' } });
     vi.stubEnv('CLOUD_AGENT_ENGINE', 'opencode');
-    expect((await t.mutation(internal.runner.hello, { threadId: thread._id })).agent).toEqual({ engine: 'opencode', keyEnv: 'DEEPSEEK_API_KEY', env: OPENCODE_ENV });
+    // The hello now follows convex/agent.ts (OpenRouter first, TheRouter as the fallback; tests/agent.test.ts).
+    expect((await t.mutation(internal.runner.hello, { threadId: thread._id })).agent).toEqual(newAgentChoice('credit', { CLOUD_AGENT_ENGINE: 'opencode' }));
   });
 
   test('the Own key plan gets Claude even on an opencode deployment', async () => {

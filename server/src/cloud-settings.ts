@@ -4,8 +4,8 @@
 //
 // Which agent runs is the cloud's engine (ANYAPP_CLOUD_ENGINE, set by the runner from Convex's
 // hello): "claude" (the default, the Claude Agent SDK's ACP adapter on Opus and Sonnet) or
-// "opencode" (OpenCode's `opencode acp` on DeepSeek's API, or another provider OpenCode knows,
-// server/src/acp/opencode.ts).
+// "opencode" (OpenCode's `opencode acp` on OpenRouter, falling back to TheRouter, or another
+// provider OpenCode knows, server/src/acp/opencode.ts).
 
 export type HelperLevel = "deep" | "focused" | "simple";
 export const HELPER_LEVELS: readonly HelperLevel[] = ["deep", "focused", "simple"];
@@ -24,7 +24,7 @@ export interface ModelChoice {
  * proxy placeholder (the proxy adds the real key on the way out, docs/CLOUD.md section 2).
  */
 export interface OpenCodeProvider {
-  /** The provider id in model ids ("deepseek" in "deepseek/deepseek-v4-pro"). */
+  /** The provider id in model ids ("openrouter" in "openrouter/deepseek/deepseek-v4-pro-0813"). */
   id: string;
   /** The AI SDK package for a provider OpenCode does not know by itself (e.g. "@ai-sdk/openai-compatible"). */
   npm?: string;
@@ -36,8 +36,22 @@ export interface OpenCodeProvider {
   name?: string;
 }
 
+/** A provider and the two models used on it (the work, and simple work). */
+export interface OpenCodeRoute {
+  provider: OpenCodeProvider;
+  /** "<provider>/<model>" for the orchestrator, deep and focused work. */
+  model: string;
+  /** "<provider>/<model>" for simple work (and OpenCode's own titles). */
+  simpleModel: string;
+}
+
 export interface OpenCodeSettings {
   provider: OpenCodeProvider;
+  /**
+   * The second provider: when the first one fails (out of credit, down, refusing the key) a turn
+   * moves to it, in the same session (acp/opencode.ts). Absent: no fallback.
+   */
+  fallback?: OpenCodeRoute;
   /** The opencode CLI: an absolute path, or a name the agent's PATH finds (the box: /opt/npm/bin). */
   cli: string;
   /** A folder both the runner and the agent can read, for each session's opencode.json. */
@@ -66,17 +80,37 @@ export const DEFAULT_CLOUD: CloudSettings = {
 };
 
 /**
- * The provider OpenCode calls by default: DeepSeek's own API (https://api-docs.deepseek.com), whose
- * terms allow "providing services to both internal and external end users". OpenCode Go is not the
- * default: OpenCode's terms allow its services "for your own internal use, and not on behalf of or
- * for the benefit of any third party" (docs/CLOUD.md, "OpenCode"), so it fits the owner's own tests
- * only (ANYAPP_OPENCODE_PROVIDER={"id":"opencode-go","apiKeyEnv":"OPENCODE_API_KEY"} and its models).
+ * The providers OpenCode may call, by id. Each is chosen for its terms (docs/CLOUD.md, "OpenCode"):
+ *   - openrouter (the default) and therouter (its fallback): routers whose terms let a product
+ *     serve its own customers through them; one key reaches many models, so a model is a setting.
+ *   - deepseek: DeepSeek's own API ("providing services to both internal and external end users").
+ *   - opencode-go: OpenCode's terms allow it only "for your own internal use", so the owner's own
+ *     tests only, never people's changes.
+ * OpenRouter is in OpenCode's own catalog; TheRouter speaks the OpenAI API, through the AI SDK's
+ * openai-compatible package (usage included in streams, so every token is counted).
  */
-export const DEEPSEEK_PROVIDER: OpenCodeProvider = { id: "deepseek", apiKeyEnv: "DEEPSEEK_API_KEY" };
-/** DeepSeek V4 Pro: the strongest, no image input. */
-export const OPENCODE_DEFAULT_MODEL = "deepseek/deepseek-v4-pro";
-/** deepseek-flash: DeepSeek V4.1 Flash (1017), quicker and cheaper, takes images. */
-export const OPENCODE_DEFAULT_SIMPLE_MODEL = "deepseek/deepseek-flash";
+export const PROVIDERS: Readonly<Record<string, OpenCodeProvider>> = {
+  openrouter: { id: "openrouter", apiKeyEnv: "OPENROUTER_API_KEY", name: "OpenRouter" },
+  therouter: { id: "therouter", npm: "@ai-sdk/openai-compatible", baseURL: "https://api.therouter.ai/v1", apiKeyEnv: "THEROUTER_API_KEY", name: "TheRouter" },
+  deepseek: { id: "deepseek", apiKeyEnv: "DEEPSEEK_API_KEY", name: "DeepSeek" },
+  "opencode-go": { id: "opencode-go", apiKeyEnv: "OPENCODE_API_KEY", name: "OpenCode Go" },
+};
+
+/** Each provider's newest DeepSeek: the strongest for the work, the quicker Flash for simple work. */
+export const PROVIDER_MODELS: Readonly<Record<string, { model: string; simpleModel: string }>> = {
+  // https://openrouter.ai/api/v1/models (26 Nov 2026): V4 Pro 0813 (no images), V4.1 Flash 1017.
+  openrouter: { model: "openrouter/deepseek/deepseek-v4-pro-0813", simpleModel: "openrouter/deepseek/deepseek-v4.1-flash-1017" },
+  // https://therouter.ai/models/ (26 Nov 2026): its Flash id serves V4.1 Flash (TheRouter's blog, 10 Sep 2026).
+  therouter: { model: "therouter/deepseek/deepseek-v4-pro", simpleModel: "therouter/deepseek/deepseek-v4-flash" },
+  deepseek: { model: "deepseek/deepseek-v4-pro", simpleModel: "deepseek/deepseek-flash" },
+  "opencode-go": { model: "opencode-go/deepseek-v4-pro", simpleModel: "opencode-go/deepseek-v4.1-flash" },
+};
+
+/** With engine "opencode" and no provider named: OpenRouter, falling back to TheRouter. */
+export const DEFAULT_PROVIDER = "openrouter";
+export const DEFAULT_FALLBACK: Readonly<Record<string, string>> = { openrouter: "therouter", therouter: "openrouter" };
+export const OPENCODE_DEFAULT_MODEL = PROVIDER_MODELS.openrouter!.model;
+export const OPENCODE_DEFAULT_SIMPLE_MODEL = PROVIDER_MODELS.openrouter!.simpleModel;
 
 /**
  * The orchestrator and the three levels on OpenCode: one strong model, a quicker one for simple
@@ -94,18 +128,37 @@ export function opencodeModels(model: string, simpleModel: string): Pick<CloudSe
   };
 }
 
-function parseProvider(text: string): OpenCodeProvider {
+/** A provider by id ("openrouter"), or as JSON for one Kiwimake does not know (a stub in tests). */
+function parseProvider(text: string, name: string): OpenCodeProvider {
+  if (!text.trim().startsWith("{")) {
+    const known = PROVIDERS[text.trim()];
+    if (!known) throw new Error(`${name} must be one of ${Object.keys(PROVIDERS).join(", ")}, or JSON like {"id":"openrouter","apiKeyEnv":"OPENROUTER_API_KEY"}`);
+    return known;
+  }
   const p = JSON.parse(text) as Partial<OpenCodeProvider>;
   if (!p || typeof p.id !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(p.id) || typeof p.apiKeyEnv !== "string" || !/^[A-Z_][A-Z0-9_]*$/.test(p.apiKeyEnv)) {
-    throw new Error('ANYAPP_OPENCODE_PROVIDER must be JSON like {"id":"opencode-go","apiKeyEnv":"OPENCODE_API_KEY"}');
+    throw new Error(`${name} must be a provider id, or JSON like {"id":"openrouter","apiKeyEnv":"OPENROUTER_API_KEY"}`);
   }
+  // A known id keeps what Kiwimake knows about it (its package, address and name) unless the JSON says otherwise.
+  const base = PROVIDERS[p.id];
   return {
     id: p.id,
     apiKeyEnv: p.apiKeyEnv,
-    ...(typeof p.npm === "string" ? { npm: p.npm } : {}),
-    ...(typeof p.baseURL === "string" ? { baseURL: p.baseURL } : {}),
-    ...(typeof p.name === "string" ? { name: p.name } : {}),
+    ...(typeof p.npm === "string" ? { npm: p.npm } : base?.npm ? { npm: base.npm } : {}),
+    ...(typeof p.baseURL === "string" ? { baseURL: p.baseURL } : base?.baseURL ? { baseURL: base.baseURL } : {}),
+    ...(typeof p.name === "string" ? { name: p.name } : base?.name ? { name: base.name } : {}),
   };
+}
+
+/** A provider and its two models from the environment (models default to the provider's newest DeepSeek). */
+function routeFrom(provider: OpenCodeProvider, model: string | undefined, simple: string | undefined): OpenCodeRoute {
+  const usual = PROVIDER_MODELS[provider.id];
+  const m = model || usual?.model || "";
+  const sm = simple || (!model ? usual?.simpleModel : undefined) || m;
+  for (const x of [m, sm]) {
+    if (!x.startsWith(`${provider.id}/`) || x.length <= provider.id.length + 1) throw new Error(`The OpenCode model must be "${provider.id}/<model>", not "${x}"`);
+  }
+  return { provider, model: m, simpleModel: sm };
 }
 
 export function cloudSettingsFromEnv(env: NodeJS.ProcessEnv): CloudSettings | undefined {
@@ -119,23 +172,34 @@ export function cloudSettingsFromEnv(env: NodeJS.ProcessEnv): CloudSettings | un
   const engine = env.ANYAPP_CLOUD_ENGINE ?? "claude";
   if (!isCloudEngine(engine)) throw new Error(`ANYAPP_CLOUD_ENGINE must be "claude" or "opencode", not "${engine}"`);
   if (engine === "claude") return { ...DEFAULT_CLOUD, agentPrefix };
-  const provider = env.ANYAPP_OPENCODE_PROVIDER ? parseProvider(env.ANYAPP_OPENCODE_PROVIDER) : DEEPSEEK_PROVIDER;
-  const usual = provider.id === DEEPSEEK_PROVIDER.id;
-  const model = env.ANYAPP_OPENCODE_MODEL || (usual ? OPENCODE_DEFAULT_MODEL : "");
-  const simple = env.ANYAPP_OPENCODE_SIMPLE_MODEL || (usual && !env.ANYAPP_OPENCODE_MODEL ? OPENCODE_DEFAULT_SIMPLE_MODEL : model);
-  for (const m of [model, simple]) {
-    if (!m.startsWith(`${provider.id}/`) || m.length <= provider.id.length + 1) throw new Error(`The OpenCode model must be "${provider.id}/<model>", not "${m}"`);
+  const provider = parseProvider(env.ANYAPP_OPENCODE_PROVIDER || DEFAULT_PROVIDER, "ANYAPP_OPENCODE_PROVIDER");
+  const main = routeFrom(provider, env.ANYAPP_OPENCODE_MODEL, env.ANYAPP_OPENCODE_SIMPLE_MODEL);
+  // The fallback: named, "none", or the other router by default.
+  const fallbackName = env.ANYAPP_OPENCODE_FALLBACK_PROVIDER ?? DEFAULT_FALLBACK[provider.id] ?? "none";
+  let fallback: OpenCodeRoute | undefined;
+  if (fallbackName && fallbackName !== "none") {
+    const fp = parseProvider(fallbackName, "ANYAPP_OPENCODE_FALLBACK_PROVIDER");
+    if (fp.id === provider.id) throw new Error("The fallback provider must be another provider");
+    fallback = routeFrom(fp, env.ANYAPP_OPENCODE_FALLBACK_MODEL, env.ANYAPP_OPENCODE_FALLBACK_SIMPLE_MODEL);
   }
   return {
     engine,
-    ...opencodeModels(model, simple),
+    ...opencodeModels(main.model, main.simpleModel),
     agentPrefix,
     opencode: {
       provider,
+      ...(fallback ? { fallback } : {}),
       cli: env.ANYAPP_OPENCODE_CLI || "opencode",
       ...(env.ANYAPP_OPENCODE_CONFIG_DIR ? { configDir: env.ANYAPP_OPENCODE_CONFIG_DIR } : {}),
     },
   };
+}
+
+/** The same work on the fallback provider: its simple model for simple work, else its main model. */
+export function fallbackChoice(settings: CloudSettings, choice: ModelChoice, simple: boolean): ModelChoice | undefined {
+  const fb = settings.opencode?.fallback;
+  if (!fb) return undefined;
+  return { model: simple ? fb.simpleModel : fb.model, effort: choice.effort };
 }
 
 /** The model and effort a helper at `level` gets (an unknown level: focused). */

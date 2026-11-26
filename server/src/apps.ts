@@ -170,6 +170,11 @@ function firstLine(text: string, max = 300): string {
 export function agentFailure(error: unknown, engine: SessionEngine = "claude"): string {
   const raw = error instanceof Error ? error.message : String(error);
   const message = firstLine(raw.replace(/^Internal error:\s*/i, "").replace(/:\s*\{"errorKind"\s*:\s*"[^"]+"\}\s*$/, ""), 200);
+  // The cloud's OpenCode agent runs on Kiwimake's own provider accounts: a provider's own words
+  // (its credit page, its limits) are ours to fix, never the person's.
+  if (engine === "opencode" && (/"errorName"\s*:\s*"provider\./.test(raw) || /rate.?limit|usage limit|quota|insufficient|credits/i.test(message))) {
+    return "Kiwimake's AI is not available right now. Try again in a few minutes.";
+  }
   if (/"errorKind"\s*:\s*"rate_limit"/i.test(raw) || /you(?:'|’)ve hit your .*limit|usage limit|rate.?limit|quota exceeded|usage_limit_reached/i.test(message)) {
     return `${sessionEngineName(engine)} usage limit reached. ${message.replace(/[.!?]$/, "")}. Try again after the limit resets.`;
   }

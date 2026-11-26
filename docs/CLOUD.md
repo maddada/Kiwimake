@@ -745,6 +745,40 @@ Claude (the person's Anthropic key).
   ones, the tool called and shown as `mcp__app__set_app_kind`, titles on Flash, usage counted.
   **Not run:** a real DeepSeek call, a box with the `anyapp-box-v2` image
   (`cloud/box/provision-v2.sh`), and a change from the phone on this engine.
+- **OpenRouter and TheRouter (added 2026-11-26, replaces DeepSeek-direct as the default).** The
+  user has credit on both and wants to switch models easily. Terms: OpenRouter's (section 5.1) let
+  the service reach "your customers (to the extent you incorporate the Service into your own
+  products and services)", and section 7 forbids only "reselling API access to Models or otherwise
+  developing a competing service" (Kiwimake sells changes to apps, not model access), and asks us to
+  pass the model makers' terms on to our customers. TheRouter's terms
+  (https://therouter.ai/legal/terms-v1.txt) forbid illegal content, getting round a provider's
+  policy and abusing the infrastructure, and nothing about serving one's own users; its Partners
+  page invites "App Integrators" to build products on it (worth confirming with legal@therouter.ai).
+  Sources: `~/kiwimake-work/cloud-live/routers/terms-research.md`.
+  - **Settings** (Convex, `cloud/convex/agent.ts`): `CLOUD_AGENT_ENGINE=opencode`,
+    `CLOUD_AGENT_PROVIDER` (`openrouter` by default, or `therouter`), `CLOUD_AGENT_MODEL` and
+    `CLOUD_AGENT_SIMPLE_MODEL` as the provider names them, `CLOUD_AGENT_FALLBACK` (the other router
+    by default, or `none`) with `CLOUD_AGENT_FALLBACK_MODEL` and `_SIMPLE_MODEL`. The hello hands
+    them to the companion as `ANYAPP_OPENCODE_PROVIDER`, `_MODEL`, `_SIMPLE_MODEL`,
+    `_FALLBACK_PROVIDER`, `_FALLBACK_MODEL`, `_FALLBACK_SIMPLE_MODEL`. Defaults:
+    `openrouter/deepseek/deepseek-v4-pro-0813` and `openrouter/deepseek/deepseek-v4.1-flash-1017`;
+    `therouter/deepseek/deepseek-v4-pro` and `therouter/deepseek/deepseek-v4-flash`. The old
+    `CLOUD_OPENCODE_*` settings in `config.ts` are no longer read.
+  - **Keys**: `OPENROUTER_API_KEY` (Secret limited to `openrouter.ai`) and `THEROUTER_API_KEY`
+    (limited to `api.therouter.ai`), both Instabox proxy Secrets; the box only gets the
+    placeholders, and the runner writes only `ibsec_` values into `agent-env`.
+  - **Fallback** (`server/src/acp/claude-session.ts`): when the provider refuses a turn (out of
+    credit, model gone, cannot connect: opencode's `provider.*` errors) or opencode reports three
+    retries in a row (down, 5xx, rate limited), the session switches its model to the fallback
+    provider's (`session/set_config_option`, same opencode session, same context) and runs the turn
+    again (or, when the turn had already done work, asks the agent to carry on without redoing it).
+    It stays on the fallback for the rest of the session. Usage is counted under the model that ran.
+  - **Prices** (`cloud/convex/agentPrices.ts`): OpenRouter at its dearest host for each model plus
+    its 5.5% credit fee; TheRouter's V4 Pro at the $2.50 / $5.00 its model page still names (its
+    list says less) and cache reads at the input price, until a real bill shows otherwise.
+  - **Proven with stubs** (`server/test/opencode.test.ts`, real `opencode acp`): a turn on
+    OpenRouter; a 402 "out of credit" moves the turn to TheRouter and the session stays there; a
+    503 moves a simple helper to TheRouter's Flash in under a minute.
 
 **The builder on the box** is `builder/` unchanged in what it builds: `createApp`, `buildApk`, the
 fast lane (a JavaScript-only change is a quick build in about 16 s with no Gradle, `docs/FAST-LANE.md`).

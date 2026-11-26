@@ -2,7 +2,8 @@
 // fixed answers, streamed as SSE with usage. When the last user message says "call <name>" and a
 // tool whose name ends with <name> is offered, it calls that tool once with STUB_TOOL_ARGS, then
 // answers in words. Every request is appended to the log file as one JSON line (whether the
-// Authorization header carried STUB_EXPECTED_KEY, never a key itself).
+// Authorization header carried STUB_EXPECTED_KEY, never a key itself). STUB_FAIL=<status> makes
+// every completion fail with that HTTP status (402 out of credit, 503 down).
 //   node openai-stub.mjs <log file>   -> prints the port it listens on
 import { createServer } from "node:http";
 import { appendFileSync } from "node:fs";
@@ -31,6 +32,11 @@ createServer((req, res) => {
     };
     if (logFile) appendFileSync(logFile, JSON.stringify(entry) + "\n");
     if (!req.url.endsWith("/chat/completions")) { res.writeHead(404, { "content-type": "application/json" }); return res.end("{}"); }
+    // STUB_FAIL=<status>: every completion fails that way (402: out of credit, 503: down).
+    if (process.env.STUB_FAIL) {
+      res.writeHead(Number(process.env.STUB_FAIL), { "content-type": "application/json" });
+      return res.end(JSON.stringify({ error: { message: Number(process.env.STUB_FAIL) === 402 ? "Insufficient credits. Add more using https://example.test/credits" : "Service unavailable", code: Number(process.env.STUB_FAIL) } }));
+    }
     const usage = { prompt_tokens: 1200, completion_tokens: 30, total_tokens: 1230, prompt_tokens_details: { cached_tokens: 800 } };
     if (!json.stream) {
       res.writeHead(200, { "content-type": "application/json" });

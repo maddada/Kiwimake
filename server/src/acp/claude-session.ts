@@ -81,6 +81,10 @@ export interface AcpAgentProfile {
   normalizePermission?(request: AcpPermissionRequest): AcpPermissionRequest;
   /** false: the model takes no pictures, whatever initialize says (OpenCode on DeepSeek V4 Pro). */
   images?: boolean;
+  /** A session update saying the model's provider keeps failing (OpenCode's retries): a reason, else undefined. */
+  providerTrouble?(update: unknown): string | undefined;
+  /** A failed session/prompt that was the provider's fault (out of credit, refused key, unreachable). */
+  isProviderError?(error: unknown): boolean;
   /** A stop reason that means the plan is used up: the turn fails with this message (Antigravity: refusal). */
   quotaStop?: { stopReason: string; message: string; limit(seenAt: string): PlanLimit; ok(seenAt: string): PlanLimit };
 }
@@ -114,6 +118,14 @@ export interface ClaudeSessionOptions {
   model?: SessionModel;
   /** The cloud: labels for usageTaps (the helper id and level). */
   tag?: Record<string, string>;
+  /**
+   * The same work on another provider (OpenCode's fallback route). When the provider fails a turn
+   * (the profile's isProviderError or providerTrouble), the session switches to this model and runs
+   * the turn again; it stays there for the rest of its life.
+   */
+  fallbackModel?: SessionModel;
+  /** The session moved to fallbackModel (for logs and the chat). */
+  onFallback?(info: { from: string; to: string; reason: string }): void;
   /**
    * Whether the agent may read and write files through this process (ACP's fs capability). Off in
    * the cloud: the agent is another Unix user and must use its own file access, never ours.
@@ -156,11 +168,21 @@ export class ClaudeSession {
   private loading = false;
   private canResume = false;
   private readonly profile: AcpAgentProfile;
+  /** The model the session runs on now (options.model, or fallbackModel after a provider failed). */
+  private currentModel: SessionModel | undefined;
+  /** The current turn: whether the agent did anything yet, and a provider failure seen in it. */
+  private turn: { active: boolean; trouble?: string } | undefined;
 
   constructor(options: ClaudeSessionOptions) {
     this.options = options;
     this.profile = options.profile ?? CLAUDE_PROFILE;
     this.pendingInstructions = options.instructions;
+    this.currentModel = options.model;
+  }
+
+  /** The model in use now ("<provider>/<model>" for OpenCode). */
+  get model(): string | undefined {
+    return this.currentModel?.model;
   }
 
   get alive(): boolean {
@@ -180,6 +202,16 @@ export class ClaudeSession {
         const limit = this.options.onPlanLimit ? planLimitFrom(update) : null;
         if (limit) this.options.onPlanLimit!(limit);
         if (this.loading || (this.sessionId !== "" && sessionId !== this.sessionId)) return;
+        if (this.turn) {
+          const kind = isJsonObject(update) ? update["sessionUpdate"] : undefined;
+          if (kind === "agent_message_chunk" || kind === "tool_call") this.turn.active = true;
+          // A provider that keeps failing: stop the turn here and run it on the fallback.
+          const trouble = this.canFallBack() && !this.turn.trouble ? this.profile.providerTrouble?.(update) : undefined;
+          if (trouble) {
+            this.turn.trouble = trouble;
+            this.cancel();
+          }
+        }
         this.options.onUpdate(update);
       },
       onNotification: () => {},
@@ -234,7 +266,7 @@ export class ClaudeSession {
       }
       if (!this.options.askPermissions) await this.selectFullAccessMode(configState);
       else await this.connection.request("session/set_mode", { sessionId: this.sessionId, modeId: "default" }, 30_000).catch(() => undefined);
-      if (this.options.model) await this.selectModel(configState, this.options.model);
+      if (this.currentModel) await this.selectModel(configState, this.currentModel);
     } catch (error) {
       await connection.kill();
       throw error;
@@ -245,7 +277,7 @@ export class ClaudeSession {
    * The model first, then the effort (the adapter offers effort levels per model), with ACP's
    * session/set_config_option, as the cloud spike proved (docs/CLOUD.md, "Models").
    */
-  private async selectModel(configState: unknown, choice: SessionModel): Promise<void> {
+  private async selectModel(configState: unknown, choice: SessionModel, strict = false): Promise<void> {
     type Option = { id: string; category?: string };
     const optionsOf = (state: unknown): Option[] =>
       isJsonObject(state) && Array.isArray(state["configOptions"]) ? (state["configOptions"] as Option[]).filter((o) => isJsonObject(o) && typeof o.id === "string") : [];
@@ -265,6 +297,7 @@ export class ClaudeSession {
       this.options.log(`session ${this.sessionId}: ${choice.model} at ${choice.effort}`);
     } catch (error) {
       this.options.log(`could not set the model to ${choice.model} at ${choice.effort}: ${(error as Error).message}`);
+      if (strict) throw error;
     }
   }
 
@@ -316,12 +349,52 @@ export class ClaudeSession {
       // The files stay on this PC, so the agent can also put a picture into the app when asked to.
       prompt.push({ type: "text", text: `(The ${images.length === 1 ? "picture is" : "pictures are"} also saved on this PC: ${images.map((i) => i.path).join(", ")})` });
     }
-    const result = await this.connection.request("session/prompt", { sessionId: this.sessionId, prompt }, null);
+    return this.runTurn(prompt);
+  }
+
+  private canFallBack(): boolean {
+    return Boolean(this.options.fallbackModel) && this.currentModel?.model !== this.options.fallbackModel?.model;
+  }
+
+  /** Moves the session to the fallback model; its effort too. */
+  private async fallBack(reason: string): Promise<void> {
+    const to = this.options.fallbackModel!;
+    const from = this.currentModel?.model ?? "?";
+    this.options.log(`${this.profile.label}: ${from} failed (${reason}); moving this session to ${to.model}`);
+    await this.selectModel(undefined, { ...to, configIds: to.configIds ?? { model: "model", effort: "effort" } }, true);
+    this.currentModel = to;
+    try {
+      this.options.onFallback?.({ from, to: to.model, reason });
+    } catch {}
+  }
+
+  /**
+   * One turn. A provider failure (refused at once, or retried until the session cancelled it)
+   * moves the session to the fallback model and runs the turn again there: the same prompt when the
+   * agent had done nothing yet, else a word to carry on from where it stopped.
+   */
+  private async runTurn(prompt: AcpPromptBlock[]): Promise<string> {
+    if (!this.connection || this.connection.exited) throw new Error("The agent session is not running");
+    this.turn = { active: false };
+    let result: unknown;
+    try {
+      result = await this.connection.request("session/prompt", { sessionId: this.sessionId, prompt }, null);
+    } catch (error) {
+      const turn = this.turn;
+      this.turn = undefined;
+      if (this.canFallBack() && this.profile.isProviderError?.(error)) {
+        await this.fallBack(firstLineOf(error));
+        return this.runTurn(turn?.active ? carryOn() : prompt);
+      }
+      throw error;
+    }
+    const turn = this.turn;
+    this.turn = undefined;
     const usage = promptUsage(result);
     if (usage) {
       for (const tap of usageTaps) {
         try {
-          tap({ sessionId: this.sessionId, ...(this.options.model ? { model: this.options.model.model, effort: this.options.model.effort } : {}), tag: this.options.tag ?? {}, usage });
+          tap({ sessionId: this.sessionId, ...(this.currentModel ? { model: this.currentModel.model, effort: this.currentModel.effort } : {}), tag: this.options.tag ?? {}, usage });
         } catch {}
       }
       try {
@@ -331,6 +404,10 @@ export class ClaudeSession {
       }
     }
     const stopReason = isJsonObject(result) ? (readString(result, "stopReason") ?? "end_turn") : "end_turn";
+    if (turn?.trouble && stopReason === "cancelled") {
+      await this.fallBack(turn.trouble);
+      return this.runTurn(turn.active ? carryOn() : prompt);
+    }
     const quota = this.profile.quotaStop;
     if (quota && stopReason === quota.stopReason) {
       this.options.onPlanLimit?.(quota.limit(new Date().toISOString()));
@@ -384,6 +461,15 @@ export class ClaudeSession {
       responder.error(-32603, error instanceof Error ? error.message : String(error));
     }
   }
+}
+
+function firstLineOf(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).split("\n")[0]!.slice(0, 200);
+}
+
+/** The turn again after a provider failed halfway: the agent carries on, never redoes. */
+function carryOn(): AcpPromptBlock[] {
+  return [{ type: "text", text: "(Your last turn was cut off by a problem with the AI service. Carry on from where you stopped; do not redo what is already done.)" }];
 }
 
 /** bb's pickPermissionOptionId for "allow_once". */

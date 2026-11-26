@@ -24,10 +24,11 @@ async function main() {
   const hello = await link.hello();
   const agent = agentOf(hello);
   log('hello', JSON.stringify({ app: hello.slug, buildHigh: hello.buildHigh, hasKey: Boolean(hello.certSha256), engine: agent.engine }));
-  // The agent's AI key: Instabox's proxy placeholder for this box (ibsec_...), never a real key,
-  // under the name the engine reads (ANTHROPIC_API_KEY, or the opencode provider's, e.g.
-  // DEEPSEEK_API_KEY). The agent may read it on purpose: the proxy swaps the real key in on the way out.
-  const lines = placeholderLines(process.env, [agent.keyEnv]);
+  // The agent's AI keys: Instabox's proxy placeholders for this box (ibsec_...), never a real key,
+  // under the names the engine reads (ANTHROPIC_API_KEY, or the opencode providers', e.g.
+  // OPENROUTER_API_KEY and its fallback's THEROUTER_API_KEY). The agent may read them on purpose:
+  // the proxy swaps the real key in on the way out, only toward that provider's host.
+  const lines = placeholderLines(process.env, agent.keyEnvs);
   if (lines && fs.existsSync('/opt/kiwi/agent-env')) fs.writeFileSync('/opt/kiwi/agent-env', lines);
   // The engine's settings for the companion (server/src/cloud-settings.ts reads them).
   Object.assign(process.env, agent.env);
@@ -52,14 +53,15 @@ async function main() {
   log('runner stopped');
 }
 
-/** The hello's agent choice (cloud/convex/config.ts agentChoice); an older Convex sends none: Claude. */
+/** The hello's agent choice (cloud/convex/agent.ts agentChoice); an older Convex sends none: Claude. */
 export function agentOf(hello) {
   const a = hello?.agent;
   if (a && (a.engine === 'claude' || a.engine === 'opencode') && typeof a.keyEnv === 'string' && a.env && typeof a.env === 'object') {
     const env = Object.fromEntries(Object.entries(a.env).filter(([k, v]) => /^ANYAPP_(CLOUD_ENGINE|OPENCODE_[A-Z_]+)$/.test(k) && typeof v === 'string'));
-    return { engine: a.engine, keyEnv: a.keyEnv, env };
+    const keyEnvs = Array.isArray(a.keyEnvs) ? a.keyEnvs.filter((k) => typeof k === 'string') : [a.keyEnv];
+    return { engine: a.engine, keyEnv: a.keyEnv, keyEnvs, env };
   }
-  return { engine: 'claude', keyEnv: 'ANTHROPIC_API_KEY', env: { ANYAPP_CLOUD_ENGINE: 'claude' } };
+  return { engine: 'claude', keyEnv: 'ANTHROPIC_API_KEY', keyEnvs: ['ANTHROPIC_API_KEY'], env: { ANYAPP_CLOUD_ENGINE: 'claude' } };
 }
 
 /**

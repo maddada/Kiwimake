@@ -17,15 +17,16 @@ import {
   OWN_KEY_FAIR_USE_SECONDS,
   roundUpToTenth,
 } from './config';
+import { AGENT_MODEL_PRICES } from './agentPrices';
 import { estimateFor } from './estimates';
 import { balanceOf, expireGrants, spend, subscriptionOf } from './lib/credits';
 import { ownApp, requireUser } from './lib/session';
 
 type Tokens = { inputTokens: number; outputTokens: number; cacheWriteTokens: number; cacheReadTokens: number };
 
-/** A turn's AI at list price, in micros. An unknown model is priced as Opus (never under). */
+/** A turn's AI at list price, in micros (the cloud's OpenCode models: agentPrices.ts). An unknown model is priced as Opus (never under). */
 export function priceTokens(model: string | undefined, t: Tokens): number {
-  const p = MODEL_PRICES[model ?? ''] ?? MODEL_PRICES['claude-opus-5-5']!;
+  const p = AGENT_MODEL_PRICES[model ?? ''] ?? MODEL_PRICES[model ?? ''] ?? MODEL_PRICES['claude-opus-5-5']!;
   return Math.ceil((t.inputTokens * p[0] + t.outputTokens * p[1] + t.cacheWriteTokens * p[2] + t.cacheReadTokens * p[3]) / 1e6);
 }
 

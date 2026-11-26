@@ -7,6 +7,7 @@ import { CodexSession } from "./codex-session.ts";
 import { CodexModels } from "./codex-model.ts";
 import { ANTIGRAVITY_SESSION_MODEL, antigravityLaunchSpec, antigravityProfile } from "./antigravity.ts";
 import { opencodeLaunch, opencodeProfile } from "./opencode.ts";
+import { fallbackChoice } from "../cloud-settings.ts";
 
 /** Claude, Antigravity and OpenCode run over ACP (ClaudeSession is the ACP session); Codex over its app-server. */
 export type AgentSession = ClaudeSession | CodexSession;
@@ -32,6 +33,7 @@ export function createSession(config: Config, options: Omit<ClaudeSessionOptions
     const cloud = config.cloud!;
     if (!cloud.opencode) throw new Error("The cloud's OpenCode settings are missing");
     const model = options.model ?? cloud.orchestrator;
+    const fallbackModel = fallbackChoice(cloud, model, options.tag?.level === "simple");
     // MCP servers go in opencode.json (plain tools, not Code Mode), never in session/new as well.
     const mcp = options.mcpServers ?? [];
     const { launch, env } = opencodeLaunch(cloud.opencode, model, mcp, cloud.agentPrefix, join(config.stateDir || tmpdir(), "opencode"), cloud.levels.simple.model);
@@ -40,8 +42,10 @@ export function createSession(config: Config, options: Omit<ClaudeSessionOptions
       env: { ...options.env, ...env },
       mcpServers: [],
       launch,
-      profile: opencodeProfile(mcp, model.model),
+      // Pictures only when both providers' models take them (a turn may move to the fallback).
+      profile: opencodeProfile(mcp, [model.model, ...(fallbackModel ? [fallbackModel.model] : [])]),
       model,
+      ...(fallbackModel ? { fallbackModel: { ...fallbackModel, configIds: { model: "model", effort: "effort" } } } : {}),
       clientFs: false,
     });
   }

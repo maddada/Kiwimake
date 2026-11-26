@@ -18,7 +18,11 @@
 //     search and its own `opencode_*` tools. A permission deny removes a tool; `tools: false` did not.
 //   - It quietly asks a "small model" for titles: set to the same provider, so nothing else is called.
 //   - It says it takes images for every model, but DeepSeek V4 Pro has no image input: the session
-//     sends pictures as a line naming the file instead (OPENCODE_NO_IMAGES).
+//     sends pictures as a line naming the file instead (opencodeTakesImages).
+//   - Two providers in one config: the first, and a fallback. A provider that refuses a turn
+//     (out of credit: errorName "provider.quota") fails session/prompt at once; one that is down is
+//     retried for ever, shown only in session_info_update's _meta["opencode/retry"]. Either way the
+//     session moves the turn to the fallback provider's model (claude-session.ts, fallbackModel).
 //   - session/prompt's usage has inputTokens (not cached), outputTokens and cachedReadTokens.
 // The config goes to opencode as a file named by OPENCODE_CONFIG: in the cloud the agent runs as
 // another Unix user through sudo (which drops the environment), so the file sits in a folder both
@@ -49,15 +53,43 @@ export function normalizeOpencodeUpdate(update: unknown, servers: readonly strin
   return out;
 }
 
-/** Models OpenCode offers that take no pictures (models.dev: attachment false). */
-export const OPENCODE_NO_IMAGES = new Set(["deepseek/deepseek-v4-pro", "opencode-go/deepseek-v4-pro"]);
+/** DeepSeek V4 Pro takes no pictures on any provider (OpenRouter lists text only; models.dev: attachment false). */
+export const opencodeTakesImages = (model: string): boolean => !/deepseek-v4-pro/.test(model);
 
-export function opencodeProfile(mcpServers: unknown[] = [], model?: string): AcpAgentProfile {
+/** How many times OpenCode may retry a failing provider before the turn moves to the fallback. */
+export const OPENCODE_RETRIES_BEFORE_FALLBACK = 3;
+
+/**
+ * A provider that is failing, from a session update: OpenCode retries a provider that is down
+ * (5xx, timeouts) or busy (429) for ever, saying so only in a session_info_update's
+ * `_meta["opencode/retry"]` ({ attempt, error: { type, status } }).
+ */
+export function opencodeProviderTrouble(update: unknown, retries = OPENCODE_RETRIES_BEFORE_FALLBACK): string | undefined {
+  if (!isJsonObject(update) || update["sessionUpdate"] !== "session_info_update" || !isJsonObject(update["_meta"])) return undefined;
+  const retry = update["_meta"]["opencode/retry"];
+  if (!isJsonObject(retry) || typeof retry["attempt"] !== "number" || retry["attempt"] < retries) return undefined;
+  const error = isJsonObject(retry["error"]) ? retry["error"] : {};
+  return `${String(error["type"] ?? "provider error")}${typeof error["status"] === "number" ? ` ${error["status"]}` : ""}, ${retry["attempt"]} tries`;
+}
+
+/**
+ * A provider that refused a turn at once: session/prompt fails with an error naming it, e.g.
+ * "Insufficient credits ...: {"service":"session","errorName":"provider.quota"}" (also a refused
+ * key, an unknown model or a provider that cannot be reached).
+ */
+export function isOpencodeProviderError(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /"errorName"\s*:\s*"provider\./.test(text) || /ProviderModelNotFound|ProviderInitError|ECONNREFUSED|ENOTFOUND/.test(text);
+}
+
+export function opencodeProfile(mcpServers: unknown[] = [], models: string[] = []): AcpAgentProfile {
   const servers = serverNames(mcpServers);
   return {
     label: "OpenCode",
     normalizeUpdate: (update) => normalizeOpencodeUpdate(update, servers),
-    ...(model && OPENCODE_NO_IMAGES.has(model) ? { images: false } : {}),
+    providerTrouble: (update) => opencodeProviderTrouble(update),
+    isProviderError: isOpencodeProviderError,
+    ...(models.some((m) => !opencodeTakesImages(m)) ? { images: false } : {}),
   };
 }
 
@@ -82,22 +114,31 @@ export function opencodeMcp(mcpServers: unknown[]): Record<string, unknown> {
 
 /** opencode.json for one session: the model, the provider (key by environment variable), full access, the MCP servers. */
 export function opencodeConfig(settings: OpenCodeSettings, model: ModelChoice, mcpServers: unknown[], smallModel = model.model): Record<string, unknown> {
-  const p = settings.provider;
-  const ids = [...new Set([model.model, smallModel])].map((m) => m.slice(p.id.length + 1));
+  // The first provider, and the fallback's two models, so a turn can move there in the same session.
+  const routes = [{ provider: settings.provider, models: [model.model, smallModel] }];
+  if (settings.fallback) routes.push({ provider: settings.fallback.provider, models: [settings.fallback.model, settings.fallback.simpleModel] });
+  const provider: Record<string, unknown> = {};
+  for (const { provider: p, models } of routes) {
+    const ids = [...new Set(models)].map((m) => m.slice(p.id.length + 1));
+    provider[p.id] = {
+      ...(p.npm ? { npm: p.npm } : {}),
+      ...(p.name ? { name: p.name } : {}),
+      options: {
+        ...(p.baseURL ? { baseURL: p.baseURL } : {}),
+        apiKey: `{env:${p.apiKeyEnv}}`,
+        // The OpenAI-compatible package leaves usage out of streams unless asked: every token is counted.
+        ...(p.npm === "@ai-sdk/openai-compatible" ? { includeUsage: true } : {}),
+      },
+      models: Object.fromEntries(ids.map((id) => [id, {}])),
+    };
+  }
   return {
     $schema: "https://opencode.ai/config.json",
     model: model.model,
     // Titles and summaries on the same provider (never another one that has no key here).
     small_model: smallModel,
-    enabled_providers: [p.id],
-    provider: {
-      [p.id]: {
-        ...(p.npm ? { npm: p.npm } : {}),
-        ...(p.name ? { name: p.name } : {}),
-        options: { ...(p.baseURL ? { baseURL: p.baseURL } : {}), apiKey: `{env:${p.apiKeyEnv}}` },
-        models: Object.fromEntries(ids.map((id) => [id, {}])),
-      },
-    },
+    enabled_providers: routes.map((r) => r.provider.id),
+    provider,
     mcp: opencodeMcp(mcpServers),
     // Unattended: the person is on a phone. Its own questions and subagents are Kiwimake's job.
     permission: {
