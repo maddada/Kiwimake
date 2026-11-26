@@ -75,7 +75,8 @@ export async function deleteApp(app: App, opts: { uninstall: boolean; forGood: b
   if (!client) throw new Error("Your PC is not connected.");
   let result: DeleteAppResult | undefined;
   if (client instanceof CloudClient) {
-    await client.deleteApp(app.id);
+    const r = await client.deleteApp(app.id);
+    if (r?.purgeAt) setState({ cloudUndo: { app, until: r.purgeAt } });
   } else {
     if (opts.uninstall) ownUninstalls.add(app.id);
     try {
@@ -108,6 +109,14 @@ export async function loadTrash(): Promise<void> {
   } catch {
     setState({ trash: null });
   }
+}
+
+/** Undo a cloud app's delete while its window lasts (Home's notice, Settings' Recently deleted). */
+export async function restoreCloudApp(id: string): Promise<void> {
+  const client = getState().cloudClient;
+  if (!client) throw new Error("Sign in first.");
+  upsertApp(await client.restoreApp(id));
+  setState((s) => (s.cloudUndo?.app.id === id ? { cloudUndo: null } : {}));
 }
 
 export async function restoreApp(id: string): Promise<void> {

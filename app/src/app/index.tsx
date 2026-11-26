@@ -28,6 +28,7 @@ import { T } from "@/ui/Text";
 import { BrandLockup } from "@/ui/Brand";
 import { ReminderBanner } from "@/ui/Trust";
 import { UpdateNotice } from "@/ui/Updates";
+import { CloudUndoNotice } from "@/ui/Privacy";
 import { LinkAskBanner } from "@/ui/LinkAsk";
 import { MoveButton, moveLine } from "@/ui/Move";
 import { GallerySection, GalleryTile } from "@/ui/Gallery";
@@ -344,6 +345,7 @@ function AppGrid() {
       >
         <Header />
         <UpdateNotice />
+        <CloudUndoNotice />
         <ReminderBanner />
         <LinkAskBanner />
         {showPinned ? <SectionLabel testID="pinned-label">Pinned</SectionLabel> : null}
@@ -938,10 +940,21 @@ function DeletePanel({ app, installed, onDone, onCancel }: { app: App; installed
       <T variant="heading">{`Delete ${app.name}?`}</T>
       <T variant="callout" color="textSecondary" style={{ marginTop: space.xs, marginBottom: space.md }}>
         {cloud
-          ? "Choose where to delete it from. Its code stays on your GitHub."
+          ? "It leaves your app list now and can come back for a few minutes (Undo on Home, or Settings, Recently deleted). Then its chat, files and builds are deleted for good. Its code stays on your GitHub, and its signing key is kept locked for a while, then deleted."
           : "Choose where to delete it from. The app list and this phone can be restored from Recently deleted in Settings. PC and GitHub can't be undone."}
       </T>
-      <DeleteToggle testID="delete-list" label="App list" sub={cloud ? "It leaves your app list." : "It moves to Recently deleted in Settings."} value disabled />
+      {cloud && !finished ? (
+        <View style={{ alignItems: "flex-end", marginBottom: space.md }}>
+          <Button
+            testID="delete-save-key"
+            label="Save its signing key first"
+            variant="text"
+            small
+            onPress={() => router.push({ pathname: "/keys", params: { app: app.id, name: app.name } })}
+          />
+        </View>
+      ) : null}
+      <DeleteToggle testID="delete-list" label="App list" sub={cloud ? "From the cloud too, after a few minutes." : "It moves to Recently deleted in Settings."} value disabled />
       {/* A web app (docs/WEB-APPS.md) is never installed: nothing to remove from the phone. */}
       {isWebOnly(app) ? null : (
         <DeleteToggle

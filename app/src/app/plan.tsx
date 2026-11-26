@@ -1,5 +1,6 @@
 // "Your plan" (docs/CLOUD.md section 2): credits left and the plan, the plans monthly or yearly,
 // extra credit with or without a plan, and the Own key plan with the person's own Anthropic key.
+// "Manage plan" opens Stripe's portal (change the card, receipts, cancel in two taps).
 // The person only ever sees credits and prices: never tokens or what anything costs Kiwimake.
 import { useState } from "react";
 import { Pressable, ScrollView, View , Linking } from "react-native";
@@ -8,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { ArrowLeft, Check, KeyRound } from "lucide-react-native";
 import { api, cloudMessage } from "@/lib/cloud";
-import { useStore } from "@/lib/store";
+import { useStore, type Account } from "@/lib/store";
 import { Button, IconButton } from "@/ui/Button";
 import { credits } from "@/ui/CloudBits";
 import { Field } from "@/ui/Field";
@@ -19,6 +20,7 @@ type PlanRow = { id: "starter" | "pro" | "max" | "ownKey"; name: string; monthCe
 type Plans = { plans: PlanRow[]; extra: { cents: number; credits: number; months: number }; free: { credits: number } };
 
 const dollars = (cents: number) => (cents % 100 === 0 ? `$${cents / 100}` : `$${(cents / 100).toFixed(2)}`);
+const longDate = (t: number) => new Date(t).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 
 
 function Card({ children, chosen, testID }: { children: React.ReactNode; chosen?: boolean; testID?: string }) {
@@ -50,6 +52,32 @@ function Toggle({ value, onChange }: { value: "month" | "year"; onChange: (v: "m
   );
 }
 
+/**
+ * Manage plan: what the plan does next (renews, or ends and is not charged again), then Stripe's
+ * portal for the card, receipts and cancelling. Design rule: words full width, the button below.
+ */
+function ManageCard({ plan, busy, onManage }: { plan: Account["plan"]; busy: boolean; onManage: () => void }) {
+  const paid = plan.id !== "free" && plan.status !== "cancelled";
+  const line = !paid
+    ? "See your receipts and the card you pay with."
+    : plan.cancelAtPeriodEnd && plan.renewsAt
+      ? `${plan.name} ends on ${longDate(plan.renewsAt)}. Nothing more is charged; your credits stay until then.`
+      : plan.renewsAt
+        ? `${plan.name} renews on ${longDate(plan.renewsAt)}. Change your card, see receipts, or cancel: cancelling takes two taps, and the plan runs to the end of what you paid for.`
+        : "Change your card, see receipts, or cancel your plan.";
+  return (
+    <Card testID="plan-manage">
+      <T variant="heading">{paid ? "Manage plan" : "Payments"}</T>
+      <T color="textSecondary" testID="plan-manage-line">
+        {line}
+      </T>
+      <View style={{ alignItems: "flex-end" }}>
+        <Button small variant="quiet" label={paid ? (plan.cancelAtPeriodEnd ? "Keep my plan" : "Manage plan") : "See receipts"} busy={busy} testID="plan-manage-go" onPress={onManage} />
+      </View>
+    </Card>
+  );
+}
+
 export default function PlanScreen() {
   const t = useTheme();
   const insets = useSafeAreaInsets();
@@ -60,7 +88,8 @@ export default function PlanScreen() {
   const removeOwnKey = useMutation(api.accounts.removeOwnKey);
   const [interval, setInterval] = useState<"month" | "year">("month");
   const checkout = useAction(api.stripe.checkout);
-  const params = useLocalSearchParams<{ paid?: string }>();
+  const portal = useAction(api.stripe.portal);
+  const params = useLocalSearchParams<{ paid?: string; managed?: string }>();
   // Stripe's Checkout in the browser, then back here through anyappagent://plan?paid=1.
   const buy = (what: string, args: { kind: "plan" | "extra"; plan?: string; interval?: "month" | "year" }) =>
     run(what, async () => {
@@ -101,6 +130,18 @@ export default function PlanScreen() {
           <T color="ready" testID="plan-paid">
             Thank you. Your credits arrive in a moment.
           </T>
+        ) : null}
+        {account?.billing ? (
+          <ManageCard
+            plan={account.plan}
+            busy={busy === "manage"}
+            onManage={() =>
+              run("manage", async () => {
+                const { url } = (await portal({})) as { url: string };
+                await Linking.openURL(url);
+              })
+            }
+          />
         ) : null}
         <Toggle value={interval} onChange={setInterval} />
         {(plans?.plans ?? [])

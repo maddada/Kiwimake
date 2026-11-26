@@ -85,7 +85,9 @@ export class CloudClient {
     );
     return this.getApp(appId);
   };
-  deleteApp = (id: string) => call(() => convex!.mutation(api.apps.remove, { appId: id }) as Promise<void>);
+  /** Delete: it can be brought back until purgeAt (ms), then the cloud deletes it for good. */
+  deleteApp = (id: string) => call(() => convex!.mutation(api.apps.remove, { appId: id }) as Promise<{ purgeAt?: number } | null>);
+  restoreApp = (id: string) => call(() => convex!.mutation(api.apps.restore, { appId: id }) as Promise<App>);
   messages = (id: string) => call(() => convex!.query(api.chat.messages, { appId: id }) as Promise<ChatItem[]>);
   send = async (id: string, body: SendMessageRequest) => {
     const images = await this.uploadImages(body.images);

@@ -32,7 +32,7 @@ export function estimateText(e: CreditEstimate, range = false): string {
 type Estimates = { next: CreditEstimate; plan: CreditEstimate; month: { usedMillicredits: number; paceMillicredits: number; changes: number }; firstApp: boolean };
 
 export function useEstimates(appId: string | undefined): Estimates | undefined {
-  return useQuery(api.estimates.forApp, appId ? { appId } : "skip") as Estimates | undefined;
+  return (useQuery(api.estimates.forApp, appId ? { appId } : "skip") as Estimates | null | undefined) ?? undefined;
 }
 
 /** Under the message box of a cloud app: what the next change will likely use. */
@@ -83,7 +83,7 @@ export function AppCredits({ appId }: { appId: string }) {
 
 /** In a cloud app's sheet: its own signing key and the signing log (docs/CLOUD.md section 6). */
 export function AppSigning({ appId }: { appId: string }) {
-  const log = useQuery(api.signing.log, { appId }) as { certSha256: string | null; builds: { build: number; at: number; files: number }[] } | undefined;
+  const log = useQuery(api.signing.log, { appId }) as { certSha256: string | null; builds: { build: number; at: number; files: number }[] } | null | undefined;
   if (!log?.certSha256) return null;
   const last = log.builds[0];
   return (

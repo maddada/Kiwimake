@@ -21,6 +21,8 @@ export interface Account {
   pcOffSwitch: boolean;
   plan: { id: "free" | "starter" | "pro" | "max" | "ownKey"; name: string; interval?: "month" | "year"; status?: string; renewsAt?: number; cancelAtPeriodEnd?: boolean };
   credits: number;
+  /** Paid for something through Stripe: "Manage plan" opens Stripe's portal. */
+  billing?: boolean;
   pcs: { id: string; name: string; linkedFrom: string; fromName?: string | null; lastSeenAt: number | null }[];
 }
 
@@ -76,6 +78,8 @@ export interface State {
   accountAsked: string | null;
   /** Recently deleted on the PC (loaded when Settings opens); null until loaded or on an older PC. */
   trash: App[] | null;
+  /** A cloud app deleted from this phone, while it can still be brought back (Home's Undo notice). */
+  cloudUndo: { app: App; until: number } | null;
 }
 
 export const useStore = create<State>(() => ({
@@ -107,6 +111,7 @@ export const useStore = create<State>(() => ({
   pcAccount: null,
   accountAsked: null,
   trash: null,
+  cloudUndo: null,
 }));
 
 export const getState = useStore.getState;

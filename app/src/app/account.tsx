@@ -1,6 +1,7 @@
 // The Kiwimake account (docs/CLOUD.md, "One account, two places"): who is signed in, the places
 // that make their apps (this phone's PC, the cloud) with "Add" for the missing one, credits and
-// plan, "Use the cloud when my PC is off", and sign out. Without an account it offers sign-in.
+// plan, "Use the cloud when my PC is off", your data (download it, save signing keys, delete the
+// account), and sign out. Without an account it offers sign-in.
 import { useState } from "react";
 import { Pressable, ScrollView, Switch, View } from "react-native";
 import { router } from "expo-router";
@@ -8,11 +9,12 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useMutation } from "convex/react";
 import { linkPairedPc, pcLinkedHere, unlinkPairedPc } from "@/lib/pcLink";
 import { useAuthActions } from "@convex-dev/auth/react";
-import { ArrowLeft, ChevronRight, Cloud, CreditCard, LogOut, Monitor } from "lucide-react-native";
+import { ArrowLeft, ChevronRight, Cloud, CreditCard, KeyRound, LogOut, Monitor, Trash2 } from "lucide-react-native";
 import { api, cloudMessage } from "@/lib/cloud";
 import { useStore } from "@/lib/store";
 import { Button, IconButton } from "@/ui/Button";
 import { credits } from "@/ui/CloudBits";
+import { DownloadDataCard } from "@/ui/Privacy";
 import { T } from "@/ui/Text";
 import { border, icon, radius, size, space, useTheme } from "@/ui/theme";
 
@@ -219,6 +221,18 @@ export default function AccountScreen() {
             </View>
           </Card>
         ) : null}
+
+        <View style={{ gap: space.sm }}>
+          <T variant="eyebrow" color="textTertiary">
+            Your data
+          </T>
+          <DownloadDataCard />
+          <Card>
+            <Row icon={KeyRound} title="Save signing keys" line="Keep updating your apps later, from Kiwimake on a PC" onPress={() => router.push("/keys")} testID="account-keys" />
+            <View style={{ height: border.width, backgroundColor: t.border }} />
+            <Row icon={Trash2} title="Delete my account" line="Cancels your plan and deletes your cloud apps and data" onPress={() => router.push("/delete-account")} testID="account-delete" />
+          </Card>
+        </View>
 
         {error ? <T color="problem">{error}</T> : null}
         <View style={{ alignItems: "flex-end" }}>

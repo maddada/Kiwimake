@@ -17,6 +17,8 @@ import { T } from "@/ui/Text";
 import { size, space, useTheme } from "@/ui/theme";
 
 const RETURN_TO = "anyappagent://sign-in";
+const TERMS_URL = "https://kiwimake.ai/terms";
+const PRIVACY_URL = "https://kiwimake.ai/privacy";
 
 const REASONS: Record<string, string> = {
   cloud: "Your account keeps your cloud apps, their chats and your credits.",
@@ -153,6 +155,17 @@ export default function SignIn() {
           </View>
         ) : null}
         {error ? <T color="problem">{error}</T> : null}
+        <T variant="caption" color="textSecondary" style={{ marginTop: space.md }} testID="sign-in-legal">
+          {"By continuing you agree to the "}
+          <T variant="caption" color="accent" accessibilityRole="link" onPress={() => void Linking.openURL(TERMS_URL)} testID="sign-in-terms">
+            Terms
+          </T>
+          {" and the "}
+          <T variant="caption" color="accent" accessibilityRole="link" onPress={() => void Linking.openURL(PRIVACY_URL)} testID="sign-in-privacy">
+            Privacy Policy
+          </T>
+          .
+        </T>
       </ScrollView>
     </View>
   );

@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react-native";
 import Constants from "expo-constants";
 import { AnyAppNative } from "anyapp-native";
 import { AiSettingsGroup } from "@/ui/AiSettings";
+import { CloudRecentlyDeleted } from "@/ui/Privacy";
 import { UpdatesGroup } from "@/ui/Updates";
 import { AppIcon } from "@/ui/AppIcon";
 import { emptyTrash, loadTrash, restoreApp, setHidden } from "@/lib/manage";
@@ -153,6 +154,8 @@ export default function Settings() {
         {pairing ? <HiddenAppsGroup /> : null}
 
         {pairing ? <RecentlyDeletedGroup /> : null}
+
+        {cloudOn ? <CloudRecentlyDeleted Group={Group} Row={AppRow} /> : null}
 
         {pairing ? <Button testID="disconnect" label="Disconnect from your PC" variant="quiet" onPress={() => setConfirm(true)} /> : null}
 

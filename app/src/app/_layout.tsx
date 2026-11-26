@@ -75,6 +75,8 @@ export default function RootLayout() {
             <Stack.Screen name="account" />
             <Stack.Screen name="github" />
             <Stack.Screen name="plan" />
+            <Stack.Screen name="keys" />
+            <Stack.Screen name="delete-account" />
           </Stack>
         ) : null}
         <InstallPermissionSheet />
